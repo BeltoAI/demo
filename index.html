@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SlyOS Demo | On-Device AI Chat by Belto</title>
+<meta name="description" content="Live demo of SlyOS by Belto Inc. — run an AI chatbot entirely on your device using the SlyOS SDK. No cloud, no API fees, 100% private.">
+<meta name="keywords" content="Edge AI, On-Device LLM, SLM, Belto, SlyOS, Local Inference, WebGPU, Demo, quantum-1.7b">
+<meta name="author" content="Belto Inc.">
+<meta name="theme-color" content="#FF4D00">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SlyOS Demo — AI Running on YOUR Device">
+<meta property="og:description" content="Chat with a 1.7B parameter AI that runs entirely in your browser via the SlyOS SDK. No server, no cloud.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#050505;--fg:#c8c8c8;--accent:#FF4D00;--dim:#555;--border:#1a1a1a;
+--green:#4ade80;--blue:#60a5fa;--yellow:#facc15;--red:#f87171;--purple:#c084fc;
+--cyan:#22d3ee;
+}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;font-size:13px;line-height:1.6}
+::selection{background:var(--accent);color:#fff}
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#222;border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+
+/* ── BOOT ── */
+#boot{position:fixed;inset:0;z-index:100;background:var(--bg);display:flex;align-items:center;justify-content:center;flex-direction:column;transition:opacity .6s ease}
+#boot.done{opacity:0;pointer-events:none}
+#boot-text{text-align:left;max-width:520px;padding:20px}
+#boot-text .line{opacity:0;transform:translateY(4px);transition:all .35s ease;white-space:pre}
+#boot-text .line.show{opacity:1;transform:translateY(0)}
+.b-a{color:var(--accent);font-weight:700}
+.b-d{color:var(--dim)}
+.b-g{color:var(--green)}
+.b-w{color:#fff;font-weight:700}
+.cursor{display:inline-block;width:7px;height:14px;background:var(--accent);animation:blink 1s step-end infinite;vertical-align:middle;margin-left:2px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── SHELL ── */
+#shell{display:none;height:100vh;height:100dvh;flex-direction:column}
+#shell.active{display:flex}
+#topbar{
+  height:40px;min-height:40px;display:flex;align-items:center;
+  padding:0 12px;border-bottom:1px solid var(--border);background:#0a0a0a;gap:8px;
+}
+.dots{display:flex;gap:6px;flex-shrink:0}
+.dot{width:10px;height:10px;border-radius:50%}
+.dot-r{background:#ff5f57}.dot-y{background:#febc2e}.dot-g{background:#28c840}
+#topbar-center{flex:1;text-align:center;font-size:10px;color:var(--dim);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;letter-spacing:.04em}
+#topbar-status{font-weight:600}
+#topbar-right{display:flex;gap:10px;font-size:10px;flex-shrink:0}
+#topbar-right a{color:var(--dim);text-decoration:none;transition:color .2s}
+#topbar-right a:hover{color:var(--accent)}
+
+/* ── OUTPUT ── */
+#output{flex:1;overflow-y:auto;padding:16px;scroll-behavior:smooth}
+.msg{margin-bottom:14px;max-width:780px;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:translateY(0)}}
+.msg-user{color:var(--accent)}
+.msg-user::before{content:'> ';color:var(--dim)}
+.msg-bot{color:var(--fg);white-space:pre-wrap;word-wrap:break-word}
+.msg-sys{color:var(--dim);font-size:11px}
+.msg-sys .hl{color:var(--accent);font-weight:600}
+.msg-sys .ok{color:var(--green);font-weight:600}
+.msg-sys .warn{color:var(--yellow)}
+.msg-sys .err{color:var(--red)}
+.d{border:none;border-top:1px solid var(--border);margin:10px 0}
+.hl{color:var(--accent);font-weight:600}
+.dm{color:var(--dim)}
+
+/* cards */
+.card{background:#0a0a0a;border:1px solid var(--border);border-radius:5px;padding:10px;margin:6px 0;transition:border-color .2s}
+.card:hover{border-color:var(--accent)}
+.card-t{color:#fff;font-weight:600;font-size:12px}
+.card-d{color:var(--fg);font-size:11px;margin-top:3px}
+.st{display:inline-block;background:#111;border:1px solid var(--border);padding:2px 7px;border-radius:3px;margin:2px 3px 2px 0;font-size:10px}
+.st-v{color:#fff;font-weight:600}
+
+/* progress */
+.bar-wrap{margin:4px 0}
+.bar-label{font-size:10px;color:var(--dim);display:flex;justify-content:space-between;margin-bottom:2px}
+.bar{height:6px;border-radius:3px;background:#111;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width .3s ease}
+
+/* ascii */
+.ascii{font-size:10px;line-height:1.3;color:var(--dim);margin:6px 0;overflow-x:auto;white-space:pre}
+.ascii .aa{color:var(--accent)}.ascii .ag{color:var(--green)}.ascii .aw{color:#fff}
+
+/* suggestions */
+#suggestions{padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:5px;min-height:30px}
+.sug{
+  background:#111;border:1px solid var(--border);color:var(--fg);
+  font-family:inherit;font-size:10px;padding:4px 10px;border-radius:4px;
+  cursor:pointer;transition:all .15s;white-space:nowrap;
+}
+.sug:hover{border-color:var(--accent);color:var(--accent);background:#0f0800}
+.sug:disabled{opacity:.3;cursor:not-allowed}
+
+/* tile grid */
+.tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}
+.tile{
+  background:#0a0a0a;border:1px solid var(--border);border-radius:6px;
+  padding:10px 12px;cursor:pointer;transition:all .2s;
+  display:flex;align-items:flex-start;gap:10px;text-align:left;
+  font-family:inherit;color:var(--fg);position:relative;overflow:hidden;
+}
+.tile:hover{border-color:var(--accent);background:#0d0700;transform:translateY(-1px)}
+.tile:active{transform:translateY(0)}
+.tile:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.tile-icon{
+  font-size:18px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+  border-radius:5px;flex-shrink:0;line-height:1;
+}
+.tile-body{flex:1;min-width:0}
+.tile-label{color:#fff;font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.03em}
+.tile-desc{color:var(--dim);font-size:9px;margin-top:2px;line-height:1.3}
+.tile-arrow{position:absolute;top:10px;right:10px;color:var(--border);font-size:10px;transition:color .2s}
+.tile:hover .tile-arrow{color:var(--accent)}
+.tile-primary{border-color:rgba(255,77,0,.25);background:rgba(255,77,0,.04)}
+.tile-primary:hover{background:rgba(255,77,0,.08);border-color:var(--accent)}
+.tile-primary .tile-icon{background:rgba(255,77,0,.12);color:var(--accent)}
+
+/* input */
+#inputbar{
+  display:flex;align-items:center;gap:6px;
+  padding:10px 12px;border-top:1px solid var(--border);background:#0a0a0a;
+}
+#pp{color:var(--accent);font-weight:700;font-size:14px;user-select:none;flex-shrink:0}
+#prompt{
+  flex:1;background:transparent;border:none;outline:none;
+  color:var(--fg);font-family:inherit;font-size:13px;caret-color:var(--accent);min-width:0;
+}
+#prompt::placeholder{color:#333}
+#prompt:disabled{opacity:.4}
+#sbtn{
+  background:none;border:1px solid var(--border);color:var(--dim);
+  font-family:inherit;font-size:10px;padding:4px 10px;border-radius:4px;
+  cursor:pointer;transition:all .15s;flex-shrink:0;
+}
+#sbtn:hover{border-color:var(--accent);color:var(--accent)}
+#sbtn:disabled{opacity:.3;cursor:not-allowed}
+
+/* stats bar */
+#statsbar{
+  display:none;padding:4px 12px;border-top:1px solid var(--border);background:#080808;
+  font-size:9px;color:var(--dim);gap:12px;flex-wrap:wrap;align-items:center;
+}
+#statsbar.show{display:flex}
+#statsbar .stat-val{color:#fff;font-weight:600}
+
+/* ── RESPONSIVE ── */
+@media(min-width:600px){
+  .tile-grid{grid-template-columns:1fr 1fr 1fr}
+  #output{padding:20px 24px 8px}
+  #suggestions{padding:4px 24px 6px}
+  #inputbar{padding:10px 20px}
+  #statsbar{padding:4px 20px}
+  #topbar{padding:0 16px}
+  .ascii{font-size:11px}
+}
+@media(min-width:900px){
+  .tile-grid{grid-template-columns:1fr 1fr 1fr 1fr}
+  #output{padding:20px 32px 8px}
+}
+@media(max-width:599px){
+  #topbar-right{display:none}
+  body{font-size:12px}
+  .card{padding:8px}
+  .ascii{font-size:8px;line-height:1.2}
+  #topbar-center{font-size:9px}
+  .tile-grid{grid-template-columns:1fr}
+  .tile{padding:8px 10px;gap:8px}
+  .tile-icon{width:28px;height:28px;font-size:15px}
+  .tile-label{font-size:10px}
+  .tile-desc{font-size:8px}
+}
+</style>
+</head>
+<body>
+
+<div id="boot"><div id="boot-text"></div></div>
+
+<div id="shell">
+  <div id="topbar">
+    <div class="dots"><div class="dot dot-r"></div><div class="dot dot-y"></div><div class="dot dot-g"></div></div>
+    <div id="topbar-center">
+      <span id="topbar-status" style="color:var(--dim)">offline</span> slyos@demo ~ quantum-1.7b
+    </div>
+    <div id="topbar-right">
+      <a href="https://belto.world" target="_blank">homepage</a>
+      <a href="https://dashboard-khaki-iota-54.vercel.app" target="_blank">dashboard</a>
+      <a href="https://zenodo.org/records/19041422" target="_blank">research</a>
+    </div>
+  </div>
+  <div id="output"></div>
+  <div id="suggestions"></div>
+  <div id="statsbar">
+    <span>model: <span class="stat-val" id="stat-model">—</span></span>
+    <span>quant: <span class="stat-val" id="stat-quant">—</span></span>
+    <span>tokens: <span class="stat-val" id="stat-tokens">0</span></span>
+    <span>speed: <span class="stat-val" id="stat-speed">—</span></span>
+    <span>ctx: <span class="stat-val" id="stat-ctx">—</span></span>
+    <span>device: <span class="stat-val" id="stat-device">—</span></span>
+    <span>ram: <span class="stat-val" id="stat-ram">—</span></span>
+  </div>
+  <div id="inputbar">
+    <span id="pp">&#10095;</span>
+    <input id="prompt" type="text" placeholder="initializing SlyOS SDK..." disabled autocomplete="off" autofocus spellcheck="false">
+    <button id="sbtn" disabled>&#8594;</button>
+  </div>
+</div>
+
+<script type="module">
+// ============================================================
+// SlyOS On-Device Demo — Uses @beltoinc/slyos-sdk
+// Loads the real SDK via esm.sh CDN, authenticates with
+// Belto's backend, and runs quantum-1.7b (SmolLM2-1.7B-Instruct)
+// entirely on-device via Transformers.js
+// ============================================================
+import SlyOS from 'https://esm.sh/@beltoinc/slyos-sdk@1.5.5';
+
+// ── CONFIG ──
+const API_KEY = 'sk_live_195dab899a2c27badf00e560bee550727081cc8ebd1f329c';
+const MODEL_ID = 'quantum-1.7b';
+
+// ── STATE ──
+const STATE = {
+  sdk: null,
+  ready: false,
+  generating: false,
+  messages: [],
+  totalTokens: 0,
+  deviceProfile: null,
+};
+
+// ── DOM ──
+const $out = () => document.getElementById('output');
+const $prompt = document.getElementById('prompt');
+const $sbtn = document.getElementById('sbtn');
+const $sug = document.getElementById('suggestions');
+const $statsbar = document.getElementById('statsbar');
+
+// ── HELPERS ──
+function addMsg(html, cls = 'msg-bot') {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.innerHTML = html;
+  $out().appendChild(d);
+  $out().scrollTop = $out().scrollHeight;
+  return d;
+}
+function addSys(html) { return addMsg(html, 'msg-sys'); }
+
+function setSug(arr) {
+  $sug.innerHTML = '';
+  arr.forEach(s => {
+    const b = document.createElement('button');
+    b.className = 'sug';
+    b.textContent = s;
+    b.disabled = !STATE.ready;
+    b.onclick = () => { if (STATE.ready && !STATE.generating) sendMessage(s); };
+    $sug.appendChild(b);
+  });
+}
+
+function setStatus(text, color) {
+  const el = document.getElementById('topbar-status');
+  el.textContent = text;
+  el.style.color = color || 'var(--dim)';
+}
+
+function updateStats(obj) {
+  for (const [k, v] of Object.entries(obj)) {
+    const el = document.getElementById('stat-' + k);
+    if (el) el.textContent = v;
+  }
+}
+
+function setInputEnabled(enabled) {
+  $prompt.disabled = !enabled;
+  $sbtn.disabled = !enabled;
+  if (enabled) {
+    $prompt.placeholder = 'type a message...';
+    $prompt.focus();
+  }
+}
+
+// ── BOOT SEQUENCE ──
+const bootLines = [
+  { t: '<span class="b-d">BELTO INC. — SlyOS On-Device Demo</span>', d: 0 },
+  { t: '<span class="b-d">Importing @beltoinc/slyos-sdk v1.5...</span>', d: 350 },
+  { t: '<span style="color:var(--accent)">████████████████████████</span> <span class="b-g">SDK loaded</span>', d: 700 },
+  { t: '', d: 950 },
+  { t: '<span class="b-w" style="font-size:16px">1.7 Billion Parameters. On YOUR Device.</span>', d: 1100 },
+  { t: '<span class="b-a">No cloud. No server. 100% private.</span>', d: 1500 },
+  { t: '', d: 1800 },
+  { t: '<span class="b-d">Initializing...</span><span class="cursor"></span>', d: 2000 },
+];
+
+function runBoot() {
+  const c = document.getElementById('boot-text');
+  bootLines.forEach(l => {
+    const d = document.createElement('div');
+    d.className = 'line';
+    d.innerHTML = l.t || '&nbsp;';
+    c.appendChild(d);
+    setTimeout(() => d.classList.add('show'), l.d);
+  });
+  setTimeout(() => {
+    document.getElementById('boot').classList.add('done');
+    setTimeout(() => {
+      document.getElementById('boot').style.display = 'none';
+      document.getElementById('shell').classList.add('active');
+      showWelcome();
+      initSDK();
+    }, 600);
+  }, 3000);
+}
+
+// ── WELCOME ──
+function showWelcome() {
+  addMsg(
+    '<div class="ascii">' +
+    '<span class="aa">  ███████╗██╗  ██╗   ██╗ ██████╗ ███████╗\n' +
+    '  ██╔════╝██║  ╚██╗ ██╔╝██╔═══██╗██╔════╝\n' +
+    '  ███████╗██║   ╚████╔╝ ██║   ██║███████╗\n' +
+    '  ╚════██║██║    ╚██╔╝  ██║   ██║╚════██║\n' +
+    '  ███████║███████╗██║   ╚██████╔╝███████║\n' +
+    '  ╚══════╝╚══════╝╚═╝    ╚═════╝ ╚══════╝</span>\n' +
+    '  <span class="aw">On-Device AI Demo</span> <span class="b-d">powered by @beltoinc/slyos-sdk</span></div>' +
+    '<div style="margin:8px 0;padding:6px 10px;background:rgba(255,77,0,.05);border:1px solid rgba(255,77,0,.12);border-radius:4px;display:inline-flex;align-items:center;gap:6px;font-size:11px">' +
+    '<span style="color:var(--accent)">&#9679;</span>' +
+    '<span style="color:var(--accent);font-weight:700">LIVE</span>' +
+    '<span class="dm">quantum-1.7b (SmolLM2-1.7B-Instruct) running entirely on your device</span></div>' +
+    '<hr class="d">' +
+    '<p class="dm" style="font-size:10px;margin-bottom:6px">Ask anything, or pick a prompt:</p>'
+  );
+
+  const tiles = [
+    { cmd: 'What is SlyOS and how does it work?', icon: '&#9670;', bg: 'rgba(255,77,0,.12)', ic: 'var(--accent)', label: 'What is SlyOS?', desc: 'Ask the on-device AI', primary: true },
+    { cmd: 'Write a short poem about running AI on the edge', icon: '&#9998;', bg: 'rgba(192,132,252,.12)', ic: 'var(--purple)', label: 'Creative Writing', desc: 'Poetry, stories, ideas' },
+    { cmd: 'Explain quantum computing in simple terms', icon: '&#9883;', bg: 'rgba(96,165,250,.12)', ic: 'var(--blue)', label: 'Explain a Concept', desc: 'Science, tech, anything' },
+    { cmd: 'Help me write a professional email to a client', icon: '&#9993;', bg: 'rgba(74,222,128,.12)', ic: 'var(--green)', label: 'Draft an Email', desc: 'Business writing help' },
+  ];
+
+  const grid = document.createElement('div');
+  grid.className = 'tile-grid';
+  tiles.forEach(t => {
+    const tile = document.createElement('button');
+    tile.className = 'tile' + (t.primary ? ' tile-primary' : '');
+    tile.disabled = !STATE.ready;
+    tile.innerHTML =
+      '<div class="tile-icon" style="background:' + t.bg + ';color:' + t.ic + '">' + t.icon + '</div>' +
+      '<div class="tile-body"><div class="tile-label">' + t.label + '</div><div class="tile-desc">' + t.desc + '</div></div>' +
+      '<span class="tile-arrow">&#8250;</span>';
+    tile.onclick = () => { if (STATE.ready && !STATE.generating) sendMessage(t.cmd); };
+    grid.appendChild(tile);
+  });
+  $out().lastElementChild.appendChild(grid);
+  $out().scrollTop = $out().scrollHeight;
+}
+
+// ── SDK INIT ──
+async function initSDK() {
+  const progressEl = addSys('<span class="hl">Initializing SlyOS SDK...</span><br><span id="sdk-status">Connecting to Belto backend...</span>');
+
+  setStatus('connecting...', 'var(--yellow)');
+
+  try {
+    // Create SDK instance with progress tracking
+    STATE.sdk = new SlyOS({
+      apiKey: API_KEY,
+      onProgress: (e) => {
+        const statusEl = document.getElementById('sdk-status');
+        if (!statusEl) return;
+
+        if (e.stage === 'profiling') {
+          statusEl.innerHTML = '<span class="dm">' + e.message + '</span>';
+        } else if (e.stage === 'initializing') {
+          statusEl.innerHTML = '<span class="dm">' + e.message + '</span>';
+        } else if (e.stage === 'downloading') {
+          // Model download progress
+          const pct = Math.round(e.progress || 0);
+          statusEl.innerHTML =
+            '<span class="hl">Downloading quantum-1.7b:</span> ' + e.message + '<br>' +
+            '<div class="bar-wrap" style="max-width:400px;margin-top:4px">' +
+            '<div class="bar"><div class="bar-fill" style="background:var(--accent);width:' + pct + '%"></div></div>' +
+            '</div>';
+        } else if (e.stage === 'ready') {
+          statusEl.innerHTML = '<span class="ok">' + e.message + '</span>';
+        } else if (e.stage === 'error') {
+          statusEl.innerHTML = '<span class="err">' + e.message + '</span>';
+        }
+      }
+    });
+
+    // Step 1: Initialize — profiles device, authenticates, registers
+    addSys('<span class="dm">sdk.initialize() — profiling device, authenticating...</span>');
+    STATE.deviceProfile = await STATE.sdk.initialize();
+
+    const ramGB = Math.round(STATE.deviceProfile.memoryMB / 1024 * 10) / 10;
+    const cores = STATE.deviceProfile.cpuCores;
+    const quant = STATE.deviceProfile.recommendedQuant;
+    const ctx = STATE.sdk.getModelContextWindow() || STATE.deviceProfile.maxContextWindow;
+    const gpu = STATE.deviceProfile.gpuRenderer || 'none';
+    const devId = STATE.sdk.getDeviceId();
+
+    addSys(
+      '<span class="ok">Device profiled:</span> ' + cores + ' cores, ' + ramGB + 'GB RAM, ' +
+      (gpu !== 'none' ? 'GPU: ' + gpu.substring(0, 40) : 'CPU only') +
+      '<br><span class="dm">Device ID: ' + devId.substring(0, 16) + '... | Recommended: ' + quant.toUpperCase() + ' | Ctx: ' + ctx + '</span>'
+    );
+
+    updateStats({
+      device: STATE.deviceProfile.platform === 'web' ? (navigator.userAgent.match(/iPhone|iPad|Android|Mac|Windows|Linux|Tesla/)?.[0] || 'Browser') : 'Node',
+      ram: ramGB + 'GB',
+      quant: quant.toUpperCase(),
+      ctx: ctx,
+    });
+
+    // Step 2: Load model
+    addSys('<span class="hl">sdk.loadModel("quantum-1.7b") — downloading SmolLM2-1.7B-Instruct...</span><br><span class="dm">~900MB at Q4 quantization. Cached in browser after first download.</span>');
+    setStatus('downloading...', 'var(--yellow)');
+
+    await STATE.sdk.loadModel(MODEL_ID);
+
+    // Ready!
+    const modelCtx = STATE.sdk.getModelContextWindow();
+    STATE.ready = true;
+    STATE.messages = [
+      { role: 'system', content: 'You are a helpful, concise AI assistant called Quantum, running locally on the user\'s device via SlyOS by Belto Inc. You are a 1.7 billion parameter language model (SmolLM2-1.7B-Instruct). Be helpful, friendly, and concise. Keep responses under 200 words unless asked for more.' }
+    ];
+
+    setStatus('online', 'var(--green)');
+    setInputEnabled(true);
+    updateStats({ model: 'quantum-1.7b', ctx: modelCtx || ctx });
+    $statsbar.classList.add('show');
+
+    addSys(
+      '<span class="ok">quantum-1.7b loaded and ready.</span><br>' +
+      '<span class="dm">All inference happens on-device. Your conversations are 100% private.</span><br>' +
+      '<span class="dm">SDK version: ' + STATE.sdk.getSdkVersion() + '</span>'
+    );
+
+    setSug(['What can you do?', 'Tell me a joke', 'Write a haiku about AI', 'Explain edge computing']);
+
+    // Re-enable tiles
+    document.querySelectorAll('.tile').forEach(t => t.disabled = false);
+    document.querySelectorAll('.sug').forEach(s => s.disabled = false);
+
+  } catch (err) {
+    console.error('SDK init error:', err);
+    setStatus('error', 'var(--red)');
+
+    addSys(
+      '<span class="err">SDK initialization failed:</span> ' + (err.message || err) + '<br><br>' +
+      '<span class="dm">Possible causes:</span><br>' +
+      '<span class="dm">- Backend may be unreachable (CORS or network issue)</span><br>' +
+      '<span class="dm">- Device may not have enough RAM for 1.7B model (~2GB minimum)</span><br>' +
+      '<span class="dm">- Browser may not support WebAssembly SIMD</span><br><br>' +
+      '<span class="dm">Try: Chrome/Edge desktop with 4GB+ RAM. Mobile devices may take longer.</span>'
+    );
+  }
+}
+
+// ── CHAT (uses sdk.generateStream) ──
+async function sendMessage(text) {
+  if (!STATE.ready || STATE.generating || !text.trim()) return;
+
+  const input = text.trim();
+  addMsg(input, 'msg-user');
+  $prompt.value = '';
+  STATE.generating = true;
+  setInputEnabled(false);
+  $prompt.placeholder = 'generating...';
+  setStatus('generating...', 'var(--accent)');
+  setSug([]);
+
+  // Add to conversation history
+  STATE.messages.push({ role: 'user', content: input });
+
+  // Keep context short for 1.7B model (system + last 6 exchanges)
+  const contextMessages = [
+    STATE.messages[0], // system prompt
+    ...STATE.messages.slice(1).slice(-8) // last 8 user/assistant messages
+  ];
+
+  // Create streaming response element
+  const responseEl = addMsg('<span style="color:var(--dim);font-style:italic">generating...</span>');
+
+  const startTime = performance.now();
+  let tokensGenerated = 0;
+  let firstTokenTime = 0;
+  let accumulated = '';
+
+  try {
+    // Use the SDK's generateStream with onToken callback
+    const result = await STATE.sdk.generateStream(MODEL_ID, contextMessages, {
+      temperature: 0.7,
+      maxTokens: 256,
+      onToken: (token, partial) => {
+        tokensGenerated++;
+        if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
+        accumulated = partial;
+        responseEl.innerHTML = formatResponse(accumulated);
+        $out().scrollTop = $out().scrollHeight;
+
+        // Update live stats
+        const elapsed = (performance.now() - startTime) / 1000;
+        updateStats({
+          tokens: STATE.totalTokens + tokensGenerated,
+          speed: (tokensGenerated / elapsed).toFixed(1) + ' t/s',
+        });
+      }
+    });
+
+    // Fallback: if streaming didn't produce output, use final result
+    const finalText = (accumulated || result.text || '').trim();
+    if (!accumulated && finalText) {
+      responseEl.innerHTML = formatResponse(finalText);
+      accumulated = finalText;
+      tokensGenerated = result.tokensGenerated || finalText.split(/\s+/).length;
+    }
+
+    if (!finalText) {
+      responseEl.innerHTML = '<span style="color:var(--dim)">(no response — try a different question)</span>';
+    }
+
+    const totalMs = performance.now() - startTime;
+    STATE.totalTokens += tokensGenerated;
+
+    // Save to history
+    STATE.messages.push({ role: 'assistant', content: accumulated || finalText });
+
+    // Final stats
+    updateStats({
+      tokens: STATE.totalTokens,
+      speed: tokensGenerated > 0 ? (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s' : '—',
+    });
+
+    if (firstTokenTime) {
+      addSys('<span class="dm">' + tokensGenerated + ' tokens in ' + (totalMs / 1000).toFixed(1) + 's | first token: ' + Math.round(firstTokenTime) + 'ms | ' + (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s</span>');
+    }
+
+    setSug(['Tell me more', 'Explain that simpler', 'What else can you do?', 'Write code for that']);
+
+  } catch (err) {
+    console.error('Generation error:', err);
+    responseEl.innerHTML = '<span style="color:var(--red)">Error: ' + (err.message || err) + '</span>';
+    setSug(['Try again', 'Ask something else']);
+  }
+
+  STATE.generating = false;
+  setInputEnabled(true);
+  setStatus('online', 'var(--green)');
+}
+
+function formatResponse(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:#fff">$1</strong>')
+    .replace(/`([^`]+)`/g, '<code style="background:#111;padding:1px 4px;border-radius:2px;font-size:11px;color:var(--cyan)">$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
+// ── INPUT HANDLERS ──
+$prompt.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    sendMessage($prompt.value);
+  }
+});
+
+$sbtn.addEventListener('click', () => sendMessage($prompt.value));
+
+// ── INIT ──
+runBoot();
+</script>
+</body>
+</html>
