@@ -350,7 +350,7 @@ function showWelcome() {
     '<div style="margin:8px 0;padding:6px 10px;background:rgba(255,77,0,.05);border:1px solid rgba(255,77,0,.12);border-radius:4px;display:inline-flex;align-items:center;gap:6px;font-size:11px">' +
     '<span style="color:var(--accent)">&#9679;</span>' +
     '<span style="color:var(--accent);font-weight:700">LIVE</span>' +
-    '<span class="dm">quantum-1.7b (SmolLM2-360M-Instruct) running entirely on your device</span></div>' +
+    '<span class="dm">quantum-1.7b (LaMini-GPT-124M) running entirely on your device</span></div>' +
     '<hr class="d">' +
     '<p class="dm" style="font-size:10px;margin-bottom:6px">Ask anything, or pick a prompt:</p>'
   );
@@ -438,7 +438,7 @@ async function initSDK() {
     });
 
     // Step 2: Load model
-    addSys('<span class="hl">sdk.loadModel("quantum-1.7b") — downloading SmolLM2-360M-Instruct...</span><br><span class="dm">~200MB at Q4 quantization. Cached in browser after first download.</span>');
+    addSys('<span class="hl">sdk.loadModel("quantum-1.7b") — downloading LaMini-GPT-124M...</span><br><span class="dm">~65MB at Q4 quantization. Cached in browser after first download.</span>');
     setStatus('downloading...', 'var(--yellow)');
 
     await STATE.sdk.loadModel(MODEL_ID);
@@ -447,7 +447,7 @@ async function initSDK() {
     const modelCtx = STATE.sdk.getModelContextWindow();
     STATE.ready = true;
     STATE.messages = [
-      { role: 'system', content: 'You are a helpful, concise AI assistant called Quantum, running locally on the user\'s device via SlyOS by Belto Inc. You are a 360 million parameter language model (SmolLM2-360M-Instruct). Be helpful, friendly, and concise. Keep responses under 200 words unless asked for more.' }
+      { role: 'system', content: 'You are a helpful, concise AI assistant called Quantum, running locally on the user\'s device via SlyOS by Belto Inc. You are a 124 million parameter language model (LaMini-GPT-124M). Be helpful, friendly, and concise. Keep responses under 200 words unless asked for more.' }
     ];
 
     setStatus('online', 'var(--green)');
