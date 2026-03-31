@@ -216,11 +216,24 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
   </div>
 </div>
 
+<script>
+// Force non-SIMD WASM: VM falsely reports SIMD support via WebAssembly.validate.
+// This sync script runs BEFORE any ES modules load, so ORT's SIMD probe returns false.
+(function(){
+  var _wv=WebAssembly.validate,_wi=WebAssembly.instantiate,_wc=WebAssembly.compile,_wis=WebAssembly.instantiateStreaming;
+  function isProbe(b){var len=b instanceof ArrayBuffer?b.byteLength:b&&b.buffer?b.length:0;return len>0&&len<300;}
+  WebAssembly.validate=function(b){return isProbe(b)?false:_wv.call(WebAssembly,b);};
+  WebAssembly.instantiate=function(b,i){if(isProbe(b))return Promise.reject(new WebAssembly.CompileError('SIMD probe rejected'));return _wi.apply(WebAssembly,arguments);};
+  WebAssembly.compile=function(b){if(isProbe(b))return Promise.reject(new WebAssembly.CompileError('SIMD probe rejected'));return _wc.apply(WebAssembly,arguments);};
+  if(_wis)WebAssembly.instantiateStreaming=function(src,i){return Promise.resolve(src).then(function(r){if(r&&r.arrayBuffer)return r.arrayBuffer().then(function(buf){return WebAssembly.instantiate(new Uint8Array(buf),i);});return _wis.call(WebAssembly,src,i);});};
+  try{Object.defineProperty(navigator,'gpu',{get:function(){return undefined;},configurable:true});}catch(e){}
+})();
+</script>
 <script type="module">
 // ============================================================
 // SlyOS On-Device Demo — Uses @beltoinc/slyos-sdk
 // Loads the real SDK via esm.sh CDN, authenticates with
-// Belto's backend, and runs quantum-1.7b (SmolLM2-1.7B-Instruct)
+// Belto's backend, and runs quantum-1.7b (TinyLlama-1.1B-Chat)
 // entirely on-device via Transformers.js
 // ============================================================
 import SlyOS from './slyos-sdk-patched.js';
