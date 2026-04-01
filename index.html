@@ -92,6 +92,15 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 .ascii{font-size:10px;line-height:1.3;color:var(--dim);margin:6px 0;overflow-x:auto;white-space:pre}
 .ascii .aa{color:var(--accent)}.ascii .ag{color:var(--green)}.ascii .aw{color:#fff}
 
+/* model picker */
+.model-picker{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap}
+.mpick{background:#0a0a0a;border:1px solid var(--border);border-radius:6px;padding:8px 12px;cursor:pointer;font-family:inherit;text-align:left;transition:all .15s;flex:1;min-width:140px}
+.mpick:hover{border-color:var(--accent);background:#0d0700}
+.mpick.active{border-color:var(--accent);background:rgba(255,77,0,.07)}
+.mpick-name{color:#fff;font-size:11px;font-weight:600}
+.mpick-badge{color:var(--accent);font-size:9px;display:block;margin:2px 0}
+.mpick-desc{color:var(--dim);font-size:9px}
+
 /* suggestions */
 #suggestions{padding:4px 12px 6px;display:flex;flex-wrap:wrap;gap:5px;min-height:30px}
 .sug{
@@ -240,7 +249,26 @@ import SlyOS from './slyos-sdk-patched.js';
 
 // ── CONFIG ──
 const API_KEY = 'sk_live_195dab899a2c27badf00e560bee550727081cc8ebd1f329c';
-const MODEL_ID = 'quantum-1.7b';
+
+const MODEL_OPTIONS = {
+  'quantum-nano': {
+    id: 'quantum-nano',
+    label: 'Quantum Nano',
+    badge: '65MB · ~1 t/s',
+    desc: 'LaMini-GPT-124M — ultra-fast, basic quality',
+    maxTokens: 120,
+    sysPrompt: 'You are Quantum, a concise AI. Answer briefly and helpfully. No repetition.',
+  },
+  'quantum-1.7b': {
+    id: 'quantum-1.7b',
+    label: 'Quantum 1.7B',
+    badge: '200MB · ~0.4 t/s',
+    desc: 'SmolLM2-360M-Instruct — balanced quality',
+    maxTokens: 150,
+    sysPrompt: 'You are Quantum, a helpful AI assistant running on-device via SlyOS by Belto Inc. Answer concisely and clearly.',
+  },
+};
+let SELECTED_MODEL = 'quantum-nano'; // default
 
 // ── STATE ──
 const STATE = {
@@ -352,8 +380,24 @@ function showWelcome() {
     '<span style="color:var(--accent);font-weight:700">LIVE</span>' +
     '<span class="dm">quantum-1.7b (LaMini-GPT-124M) running entirely on your device</span></div>' +
     '<hr class="d">' +
-    '<p class="dm" style="font-size:10px;margin-bottom:6px">Ask anything, or pick a prompt:</p>'
+    '<p class="dm" style="font-size:10px;margin-bottom:6px">Choose a model, then ask anything:</p>' +
+    '<div class="model-picker" id="model-picker"></div>'
   );
+
+  // Model picker buttons
+  const picker = document.getElementById('model-picker');
+  Object.values(MODEL_OPTIONS).forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'mpick' + (m.id === SELECTED_MODEL ? ' active' : '');
+    btn.dataset.model = m.id;
+    btn.innerHTML = '<div class="mpick-name">' + m.label + '</div><span class="mpick-badge">' + m.badge + '</span><div class="mpick-desc">' + m.desc + '</div>';
+    btn.onclick = () => {
+      if (STATE.ready || STATE.generating) return; // can't switch mid-session
+      SELECTED_MODEL = m.id;
+      document.querySelectorAll('.mpick').forEach(b => b.classList.toggle('active', b.dataset.model === m.id));
+    };
+    picker.appendChild(btn);
+  });
 
   const tiles = [
     { cmd: 'What is SlyOS and how does it work?', icon: '&#9670;', bg: 'rgba(255,77,0,.12)', ic: 'var(--accent)', label: 'What is SlyOS?', desc: 'Ask the on-device AI', primary: true },
@@ -400,8 +444,9 @@ async function initSDK() {
         } else if (e.stage === 'downloading') {
           // Model download progress
           const pct = Math.round(e.progress || 0);
+          const mOpt = MODEL_OPTIONS[SELECTED_MODEL];
           statusEl.innerHTML =
-            '<span class="hl">Downloading quantum-1.7b:</span> ' + e.message + '<br>' +
+            '<span class="hl">Downloading ' + mOpt.label + ':</span> ' + e.message + '<br>' +
             '<div class="bar-wrap" style="max-width:400px;margin-top:4px">' +
             '<div class="bar"><div class="bar-fill" style="background:var(--accent);width:' + pct + '%"></div></div>' +
             '</div>';
@@ -438,25 +483,29 @@ async function initSDK() {
     });
 
     // Step 2: Load model
-    addSys('<span class="hl">sdk.loadModel("quantum-1.7b") — downloading LaMini-GPT-124M...</span><br><span class="dm">~65MB at Q4 quantization. Cached in browser after first download.</span>');
+    const mOpt = MODEL_OPTIONS[SELECTED_MODEL];
+    const mSize = SELECTED_MODEL === 'quantum-nano' ? '65MB' : '200MB';
+    // Lock model picker — can't switch once loading starts
+    document.querySelectorAll('.mpick').forEach(b => { b.style.pointerEvents='none'; b.style.opacity = b.dataset.model === SELECTED_MODEL ? '1' : '0.35'; });
+    addSys('<span class="hl">sdk.loadModel("' + SELECTED_MODEL + '") — ' + mOpt.desc + '</span><br><span class="dm">~' + mSize + ' Q4. Cached after first download.</span>');
     setStatus('downloading...', 'var(--yellow)');
 
-    await STATE.sdk.loadModel(MODEL_ID);
+    await STATE.sdk.loadModel(SELECTED_MODEL);
 
     // Ready!
     const modelCtx = STATE.sdk.getModelContextWindow();
     STATE.ready = true;
     STATE.messages = [
-      { role: 'system', content: 'You are Quantum, a concise AI assistant running on-device via SlyOS by Belto. Answer helpfully and briefly. No repetition.' }
+      { role: 'system', content: mOpt.sysPrompt }
     ];
 
     setStatus('online', 'var(--green)');
     setInputEnabled(true);
-    updateStats({ model: 'quantum-1.7b', ctx: modelCtx || ctx });
+    updateStats({ model: SELECTED_MODEL, ctx: modelCtx || ctx });
     $statsbar.classList.add('show');
 
     addSys(
-      '<span class="ok">quantum-1.7b loaded and ready.</span><br>' +
+      '<span class="ok">' + mOpt.label + ' loaded and ready.</span><br>' +
       '<span class="dm">All inference happens on-device. Your conversations are 100% private.</span><br>' +
       '<span class="dm">SDK version: ' + STATE.sdk.getSdkVersion() + '</span>'
     );
@@ -514,9 +563,9 @@ async function sendMessage(text) {
 
   try {
     // Use the SDK's generateStream with onToken callback
-    const result = await STATE.sdk.generateStream(MODEL_ID, contextMessages, {
+    const result = await STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
       temperature: 0.7,
-      maxTokens: 120,
+      maxTokens: MODEL_OPTIONS[SELECTED_MODEL].maxTokens,
       onToken: (token, partial) => {
         tokensGenerated++;
         if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
