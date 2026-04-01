@@ -447,7 +447,7 @@ async function initSDK() {
     const modelCtx = STATE.sdk.getModelContextWindow();
     STATE.ready = true;
     STATE.messages = [
-      { role: 'system', content: 'You are a helpful, concise AI assistant called Quantum, running locally on the user\'s device via SlyOS by Belto Inc. You are a 124 million parameter language model (LaMini-GPT-124M). Be helpful, friendly, and concise. Keep responses under 200 words unless asked for more.' }
+      { role: 'system', content: 'You are Quantum, a concise AI assistant running on-device via SlyOS by Belto. Answer helpfully and briefly. No repetition.' }
     ];
 
     setStatus('online', 'var(--green)');
@@ -498,10 +498,10 @@ async function sendMessage(text) {
   // Add to conversation history
   STATE.messages.push({ role: 'user', content: input });
 
-  // Keep context short for 1.7B model (system + last 6 exchanges)
+  // Keep context tight: system + last 4 messages (2 exchanges) to prevent hang
   const contextMessages = [
     STATE.messages[0], // system prompt
-    ...STATE.messages.slice(1).slice(-8) // last 8 user/assistant messages
+    ...STATE.messages.slice(1).slice(-4) // last 4 user/assistant messages
   ];
 
   // Create streaming response element
@@ -516,7 +516,7 @@ async function sendMessage(text) {
     // Use the SDK's generateStream with onToken callback
     const result = await STATE.sdk.generateStream(MODEL_ID, contextMessages, {
       temperature: 0.7,
-      maxTokens: 256,
+      maxTokens: 120,
       onToken: (token, partial) => {
         tokensGenerated++;
         if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
