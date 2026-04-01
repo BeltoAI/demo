@@ -268,7 +268,7 @@ const MODEL_OPTIONS = {
     sysPrompt: 'You are Quantum, a helpful AI assistant running on-device via SlyOS by Belto Inc. Answer concisely and clearly.',
   },
 };
-let SELECTED_MODEL = 'quantum-nano'; // default
+let SELECTED_MODEL = 'quantum-1.7b'; // default — SmolLM2 gives much better quality
 
 // ── STATE ──
 const STATE = {
@@ -560,16 +560,28 @@ async function sendMessage(text) {
   let tokensGenerated = 0;
   let firstTokenTime = 0;
   let accumulated = '';
+  let stopReached = false;
+
+  // Stop patterns: catch hallucinated follow-up turns and model artifacts
+  const STOP_RE = /(\n(User:|Human:|Question:)|<\|im_end\|>|<\|endoftext\|>)/;
+
+  function cleanResponse(text) {
+    const m = text.search(STOP_RE);
+    return m >= 0 ? text.slice(0, m).trim() : text.trim();
+  }
 
   try {
     // Use the SDK's generateStream with onToken callback
     const result = await STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
-      temperature: 0.7,
+      temperature: 0.5,
       maxTokens: MODEL_OPTIONS[SELECTED_MODEL].maxTokens,
       onToken: (token, partial) => {
-        tokensGenerated++;
+        if (stopReached) return;
         if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
-        accumulated = partial;
+        const clean = cleanResponse(partial);
+        if (clean.length < partial.trim().length) stopReached = true; // stop pattern hit
+        tokensGenerated++;
+        accumulated = clean;
         responseEl.innerHTML = formatResponse(accumulated);
         $out().scrollTop = $out().scrollHeight;
 
@@ -583,14 +595,15 @@ async function sendMessage(text) {
     });
 
     // Fallback: if streaming didn't produce output, use final result
-    const finalText = (accumulated || result.text || '').trim();
+    const rawFinal = accumulated || result.text || '';
+    const finalText = cleanResponse(rawFinal);
     if (!accumulated && finalText) {
       responseEl.innerHTML = formatResponse(finalText);
       accumulated = finalText;
       tokensGenerated = result.tokensGenerated || finalText.split(/\s+/).length;
     }
 
-    if (!finalText) {
+    if (!accumulated) {
       responseEl.innerHTML = '<span style="color:var(--dim)">(no response — try a different question)</span>';
     }
 
