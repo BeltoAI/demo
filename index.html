@@ -282,7 +282,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 // entirely on-device via Transformers.js
 // ============================================================
 import SlyOS from './slyos-sdk-patched.js';
-import { retrieve, buildContext, MANUAL_META, MANUAL_CHUNKS } from './rag-manual.js';
+import { retrieve, buildContext, formatSourcesHTML, MANUAL_META, MANUAL_CHUNKS } from './rag-manual.js';
 
 // ── CONFIG ──
 const API_KEY = 'sk_live_195dab899a2c27badf00e560bee550727081cc8ebd1f329c';
@@ -622,13 +622,15 @@ function initKPI() {
       if (ragMode) {
         addSys(
           '<span class="ok">RAG mode ON</span> <span class="dm">— answers grounded in <em>' +
-          MANUAL_META.title + '</em> (' + MANUAL_CHUNKS.length + ' chunks, ' + MANUAL_META.pages + ' pages)</span>'
+          MANUAL_META.title + '</em></span><br>' +
+          '<span class="dm" style="font-size:8px">&#128218; ' + MANUAL_CHUNKS.length + ' clinical chunks · ' +
+          MANUAL_META.pages + ' pages · Sources: AHA, ESC, NICE, NEJM, Lancet, WHO &amp; more</span>'
         );
         setSug([
-          'What is the PSV set pressure requirement?',
-          'ESP motor temperature limit?',
-          'H2S concentration limit in confined spaces?',
-          'BOP pressure test frequency?',
+          'Heart attack symptoms and treatment?',
+          'How is type 2 diabetes diagnosed?',
+          'Sepsis-6 bundle steps?',
+          'What are COPD GOLD stages?',
         ]);
       } else {
         addSys('<span class="dm">RAG mode OFF — general conversation mode</span>');
@@ -764,14 +766,22 @@ async function sendMessage(text) {
       addSys('<span class="dm">' + tokensGenerated + ' tokens · ' + (totalMs / 1000).toFixed(1) + 's · ' + ttftTag + ' · ' + (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s</span>');
     }
 
-    // KPI 3 — RAG citations
+    // KPI 3 — RAG citations + journal sources
     if (ragMode && ragResults.length > 0) {
-      const citations = ragResults.map(r => '<span style="color:var(--cyan)">p.' + r.page + '</span> ' + r.section).join('  ·  ');
-      addSys('<span class="dm">&#128196; Sources: ' + citations + '</span>');
+      const chunks = ragResults.map(r =>
+        '<span style="color:var(--cyan)">p.' + r.page + '</span>&nbsp;<span class="dm">' + r.section + '</span>'
+      ).join('&emsp;·&emsp;');
+      const srcLinks = formatSourcesHTML(ragResults);
+      addSys(
+        '<span class="dm">&#128196; Referenced: ' + chunks + '</span>' +
+        (srcLinks.length
+          ? '<br><span class="dm" style="font-size:8px">&#128279; ' + srcLinks.join(' &middot; ') + '</span>'
+          : '')
+      );
     }
 
     if (ragMode) {
-      setSug(['PSV set pressure requirement?', 'ESP motor temperature limit?', 'H2S in confined spaces?', 'BOP test frequency?']);
+      setSug(['Heart attack diagnosis and treatment?', 'COPD management and staging?', 'Sepsis Sepsis-6 bundle?', 'Stroke thrombolysis criteria?']);
     } else {
       setSug(['Tell me more', 'Explain that simpler', 'What else can you do?', 'Write code for that']);
     }
