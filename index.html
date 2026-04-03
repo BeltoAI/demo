@@ -459,6 +459,127 @@ function showWelcome() {
     grid.appendChild(tile);
   });
   $out().lastElementChild.appendChild(grid);
+
+  // ── Medical Reference Section ──────────────────────────────────────────────
+  const medWrap = document.createElement('div');
+  medWrap.style.cssText = 'margin-top:18px';
+
+  const medHeader = document.createElement('div');
+  medHeader.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px';
+  medHeader.innerHTML =
+    '<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.06em">&#10010; MEDICAL REFERENCE</span>' +
+    '<span style="color:#222;font-size:9px">(enable RAG doc mode for evidence-based answers with citations)</span>';
+  medWrap.appendChild(medHeader);
+
+  const medTiles = [
+    {
+      cmd: 'What are the diagnostic criteria and emergency treatment for a heart attack?',
+      icon: '&#10084;',
+      bg: 'rgba(248,113,113,.10)', ic: '#f87171',
+      label: 'Heart Attack', desc: 'MI diagnosis · STEMI · PCI',
+      tag: 'Cardiology',
+    },
+    {
+      cmd: 'How is type 2 diabetes diagnosed and what are the treatment targets?',
+      icon: '&#128197;',
+      bg: 'rgba(250,204,21,.10)', ic: 'var(--yellow)',
+      label: 'Type 2 Diabetes', desc: 'HbA1c · SGLT2 · metformin',
+      tag: 'Endocrinology',
+    },
+    {
+      cmd: 'What is the Sepsis-6 bundle and how is septic shock managed?',
+      icon: '&#9763;',
+      bg: 'rgba(248,113,113,.10)', ic: '#f87171',
+      label: 'Sepsis & Shock', desc: 'Sepsis-3 · SOFA · vasopressors',
+      tag: 'Intensive Care',
+    },
+    {
+      cmd: 'Explain COPD GOLD staging and how acute exacerbations are treated',
+      icon: '&#127748;',
+      bg: 'rgba(96,165,250,.10)', ic: 'var(--blue)',
+      label: 'COPD', desc: 'GOLD stages · spirometry · NIV',
+      tag: 'Respiratory',
+    },
+    {
+      cmd: 'What are the symptoms of stroke and what is the thrombolysis time window?',
+      icon: '&#129504;',
+      bg: 'rgba(192,132,252,.10)', ic: 'var(--purple)',
+      label: 'Stroke', desc: 'FAST · alteplase · thrombectomy',
+      tag: 'Neurology',
+    },
+    {
+      cmd: 'How is acute kidney injury staged by KDIGO criteria and when is dialysis needed?',
+      icon: '&#129504;',
+      bg: 'rgba(34,211,238,.10)', ic: 'var(--cyan)',
+      label: 'Acute Kidney Injury', desc: 'KDIGO · creatinine · dialysis',
+      tag: 'Nephrology',
+    },
+    {
+      cmd: 'What cancer screenings are recommended and at what age should they start?',
+      icon: '&#128300;',
+      bg: 'rgba(74,222,128,.10)', ic: 'var(--green)',
+      label: 'Cancer Screening', desc: 'CRC · mammogram · CT lung',
+      tag: 'Oncology',
+    },
+    {
+      cmd: 'How is major depression diagnosed using PHQ-9 and what are first-line treatments?',
+      icon: '&#129302;',
+      bg: 'rgba(192,132,252,.10)', ic: 'var(--purple)',
+      label: 'Depression', desc: 'PHQ-9 · SSRI · CBT',
+      tag: 'Psychiatry',
+    },
+    {
+      cmd: 'What is anaphylaxis and what is the correct adrenaline dose and route?',
+      icon: '&#128137;',
+      bg: 'rgba(255,77,0,.10)', ic: 'var(--accent)',
+      label: 'Anaphylaxis', desc: 'adrenaline 0.5mg IM · EpiPen',
+      tag: 'Emergency',
+    },
+    {
+      cmd: 'What are the phases of a clinical trial and how is evidence quality graded?',
+      icon: '&#128203;',
+      bg: 'rgba(250,204,21,.10)', ic: 'var(--yellow)',
+      label: 'Clinical Trials', desc: 'Phase I–IV · GRADE · RCT',
+      tag: 'Research',
+    },
+    {
+      cmd: 'What drug interactions cause serotonin syndrome and which drugs prolong QT interval?',
+      icon: '&#9889;',
+      bg: 'rgba(248,113,113,.10)', ic: '#f87171',
+      label: 'Drug Interactions', desc: 'CYP3A4 · QT · serotonin',
+      tag: 'Pharmacology',
+    },
+    {
+      cmd: 'How is delirium diagnosed using the CAM tool and what are the non-pharmacological treatments?',
+      icon: '&#129488;',
+      bg: 'rgba(96,165,250,.10)', ic: 'var(--blue)',
+      label: 'Delirium', desc: 'CAM · PINCH ME · geriatrics',
+      tag: 'Geriatrics',
+    },
+  ];
+
+  const medGrid = document.createElement('div');
+  medGrid.className = 'tile-grid';
+  medTiles.forEach(t => {
+    const tile = document.createElement('button');
+    tile.className = 'tile';
+    tile.disabled = !STATE.ready;
+    tile.innerHTML =
+      '<div class="tile-icon" style="background:' + t.bg + ';color:' + t.ic + ';font-size:14px">' + t.icon + '</div>' +
+      '<div class="tile-body">' +
+        '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">' +
+          '<div class="tile-label" style="font-size:10px">' + t.label + '</div>' +
+          '<span style="background:#111;border:1px solid #1e1e1e;color:#555;font-size:7px;padding:1px 5px;border-radius:2px;flex-shrink:0">' + t.tag + '</span>' +
+        '</div>' +
+        '<div class="tile-desc">' + t.desc + '</div>' +
+      '</div>' +
+      '<span class="tile-arrow">&#8250;</span>';
+    tile.onclick = () => { if (STATE.ready && !STATE.generating) sendMessage(t.cmd); };
+    medGrid.appendChild(tile);
+  });
+
+  medWrap.appendChild(medGrid);
+  $out().lastElementChild.appendChild(medWrap);
   $out().scrollTop = $out().scrollHeight;
 }
 
@@ -550,7 +671,7 @@ async function initSDK() {
       '<span class="dm">SDK version: ' + STATE.sdk.getSdkVersion() + '</span>'
     );
 
-    setSug(['What can you do?', 'Tell me a joke', 'Write a haiku about AI', 'Explain edge computing']);
+    setSug(['What is SlyOS?', 'Heart attack symptoms?', 'Sepsis-6 bundle?', 'COPD GOLD stages?']);
 
     // Re-enable tiles
     document.querySelectorAll('.tile').forEach(t => t.disabled = false);
