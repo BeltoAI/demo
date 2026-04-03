@@ -159,6 +159,13 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 }
 #sbtn:hover{border-color:var(--accent);color:var(--accent)}
 #sbtn:disabled{opacity:.3;cursor:not-allowed}
+#stopbtn{
+  display:none;background:none;border:1px solid var(--red);color:var(--red);
+  font-family:inherit;font-size:10px;padding:4px 10px;border-radius:4px;
+  cursor:pointer;transition:all .15s;flex-shrink:0;animation:pulse-red 1.2s ease-in-out infinite;
+}
+#stopbtn:hover{background:rgba(248,113,113,.12)}
+@keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.5}}
 
 /* stats bar */
 #statsbar{
@@ -258,6 +265,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
     <span id="pp">&#10095;</span>
     <input id="prompt" type="text" placeholder="initializing SlyOS SDK..." disabled autocomplete="off" autofocus spellcheck="false">
     <button id="sbtn" disabled>&#8594;</button>
+    <button id="stopbtn">&#9632; stop</button>
   </div>
 </div>
 
@@ -318,13 +326,17 @@ const STATE = {
 };
 let ragMode = false;
 let queryCount = 0;
+let stopRequested = false;
 
 // ── DOM ──
 const $out = () => document.getElementById('output');
 const $prompt = document.getElementById('prompt');
 const $sbtn = document.getElementById('sbtn');
+const $stopbtn = document.getElementById('stopbtn');
 const $sug = document.getElementById('suggestions');
 const $statsbar = document.getElementById('statsbar');
+
+$stopbtn.addEventListener('click', () => { stopRequested = true; });
 
 // ── HELPERS ──
 function addMsg(html, cls = 'msg-bot') {
@@ -365,9 +377,11 @@ function updateStats(obj) {
 function setInputEnabled(enabled) {
   $prompt.disabled = !enabled;
   $sbtn.disabled = !enabled;
+  $stopbtn.style.display = enabled ? 'none' : 'block';
   if (enabled) {
     $prompt.placeholder = 'type a message...';
     $prompt.focus();
+    stopRequested = false;
   }
 }
 
@@ -784,26 +798,30 @@ async function sendMessage(text) {
     qEl.className = queryCount >= 20 ? 'kpi-pass' : 'kpi-val';
   }
 
-  // KPI 3 — RAG context injection
+  // KPI 3 — RAG context injection (truncate chunks to avoid context overflow)
   let ragResults = [];
   let systemContent = MODEL_OPTIONS[SELECTED_MODEL].sysPrompt;
   if (ragMode) {
-    ragResults = retrieve(input, 3);
+    ragResults = retrieve(input, 2); // max 2 chunks
     if (ragResults.length > 0) {
-      systemContent = buildContext(ragResults) + '\n\n' + systemContent;
+      // Truncate each chunk to 300 chars — prevents overflowing the model context window
+      const truncated = ragResults.map(r => ({
+        ...r,
+        chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
+      }));
+      systemContent = buildContext(truncated);
     }
   }
 
-  // Add to conversation history
+  // Add to conversation history, trim to prevent unbounded growth
   STATE.messages.push({ role: 'user', content: input });
+  if (STATE.messages.length > 9) STATE.messages.splice(1, 2); // keep system + last 4 pairs
 
-  // Keep context tight: system + last 4 messages (2 exchanges) to prevent hang
-  const sysMsg = ragMode
-    ? { role: 'system', content: systemContent }
-    : STATE.messages[0];
+  // Keep context tight: system + last 2 messages only (1 exchange)
+  const sysMsg = { role: 'system', content: systemContent };
   const contextMessages = [
     sysMsg,
-    ...STATE.messages.slice(1).slice(-4) // last 4 user/assistant messages
+    ...STATE.messages.slice(1).slice(-2) // only last 1 exchange
   ];
 
   // Create streaming response element
@@ -823,41 +841,57 @@ async function sendMessage(text) {
     return m >= 0 ? text.slice(0, m).trim() : text.trim();
   }
 
-  try {
-    // Use the SDK's generateStream with onToken callback
-    const result = await STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
-      temperature: 0.5,
-      maxTokens: MODEL_OPTIONS[SELECTED_MODEL].maxTokens,
-      onToken: (token, partial) => {
-        if (stopReached) return;
-        if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
-        const clean = cleanResponse(partial);
-        if (clean.length < partial.trim().length) stopReached = true; // stop pattern hit
-        tokensGenerated++;
-        accumulated = clean;
-        responseEl.innerHTML = formatResponse(accumulated);
-        $out().scrollTop = $out().scrollHeight;
+  // 20-second hard timeout — unblocks UI even if SDK hangs
+  let _timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    _timeoutId = setTimeout(() => reject(new Error('⏱ Generation timed out after 20s — try a shorter question')), 20000);
+  });
 
-        // Update live stats
-        const elapsed = (performance.now() - startTime) / 1000;
-        updateStats({
-          tokens: STATE.totalTokens + tokensGenerated,
-          speed: (tokensGenerated / elapsed).toFixed(1) + ' t/s',
-        });
-      }
-    });
+  try {
+    // Use the SDK's generateStream with onToken callback, race against timeout
+    const result = await Promise.race([
+      STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
+        temperature: 0.4,
+        maxTokens: 100, // hard cap — prevents runaway generation
+        onToken: (token, partial) => {
+          if (stopReached || stopRequested) return;
+          if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
+          const clean = cleanResponse(partial);
+          if (clean.length < partial.trim().length) stopReached = true;
+          tokensGenerated++;
+          accumulated = clean;
+          responseEl.innerHTML = formatResponse(accumulated);
+          $out().scrollTop = $out().scrollHeight;
+
+          // Update live stats
+          const elapsed = (performance.now() - startTime) / 1000;
+          updateStats({
+            tokens: STATE.totalTokens + tokensGenerated,
+            speed: (tokensGenerated / elapsed).toFixed(1) + ' t/s',
+          });
+        }
+      }),
+      timeoutPromise,
+    ]);
+    clearTimeout(_timeoutId);
+
+    // If user hit Stop, mark response as truncated
+    if (stopRequested && accumulated) {
+      accumulated += ' [stopped]';
+      responseEl.innerHTML = formatResponse(accumulated);
+    }
 
     // Fallback: if streaming didn't produce output, use final result
-    const rawFinal = accumulated || result.text || '';
+    const rawFinal = accumulated || (result && result.text) || '';
     const finalText = cleanResponse(rawFinal);
     if (!accumulated && finalText) {
       responseEl.innerHTML = formatResponse(finalText);
       accumulated = finalText;
-      tokensGenerated = result.tokensGenerated || finalText.split(/\s+/).length;
+      tokensGenerated = (result && result.tokensGenerated) || finalText.split(/\s+/).length;
     }
 
     if (!accumulated) {
-      responseEl.innerHTML = '<span style="color:var(--dim)">(no response — try a different question)</span>';
+      responseEl.innerHTML = '<span style="color:var(--dim)">(no response — try a shorter or simpler question)</span>';
     }
 
     const totalMs = performance.now() - startTime;
@@ -908,9 +942,16 @@ async function sendMessage(text) {
     }
 
   } catch (err) {
+    clearTimeout(_timeoutId);
     console.error('Generation error:', err);
-    responseEl.innerHTML = '<span style="color:var(--red)">Error: ' + (err.message || err) + '</span>';
-    setSug(['Try again', 'Ask something else']);
+    // Show whatever was accumulated before the error/timeout
+    if (accumulated) {
+      responseEl.innerHTML = formatResponse(accumulated) +
+        '<br><span style="color:var(--yellow);font-size:10px">⚠ ' + (err.message || err) + '</span>';
+    } else {
+      responseEl.innerHTML = '<span style="color:var(--yellow)">⚠ ' + (err.message || err) + '</span>';
+    }
+    setSug(['Try a shorter question', 'Ask something else', 'Rephrase that']);
   }
 
   STATE.generating = false;
