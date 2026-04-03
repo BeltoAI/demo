@@ -168,6 +168,27 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 #statsbar.show{display:flex}
 #statsbar .stat-val{color:#fff;font-weight:600}
 
+/* ── KPI BAR ── */
+#kpibar{
+  display:none;padding:5px 12px;border-top:1px solid var(--border);background:#080808;
+  font-size:9px;color:var(--dim);gap:10px;flex-wrap:wrap;align-items:center;
+}
+#kpibar.show{display:flex}
+.kpi-item{display:flex;align-items:center;gap:4px;white-space:nowrap}
+.kpi-lbl{color:#444;font-size:8px;letter-spacing:.04em;text-transform:uppercase}
+.kpi-pass{color:var(--green);font-weight:700}
+.kpi-fail{color:var(--red);font-weight:700}
+.kpi-warn{color:var(--yellow);font-weight:700}
+.kpi-val{color:#fff;font-weight:600}
+#kpi-rag-btn{
+  background:#111;border:1px solid var(--border);color:var(--dim);
+  font-family:inherit;font-size:9px;padding:1px 7px;border-radius:3px;
+  cursor:pointer;transition:all .15s;
+}
+#kpi-rag-btn.on{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.08)}
+#kpi-rag-btn:hover{border-color:var(--accent);color:var(--accent)}
+.kpi-sep{color:#222}
+
 /* ── RESPONSIVE ── */
 @media(min-width:600px){
   .tile-grid{grid-template-columns:1fr 1fr 1fr}
@@ -175,6 +196,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
   #suggestions{padding:4px 24px 6px}
   #inputbar{padding:10px 20px}
   #statsbar{padding:4px 20px}
+  #kpibar{padding:5px 20px}
   #topbar{padding:0 16px}
   .ascii{font-size:11px}
 }
@@ -223,6 +245,15 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
     <span>device: <span class="stat-val" id="stat-device">—</span></span>
     <span>ram: <span class="stat-val" id="stat-ram">—</span></span>
   </div>
+  <div id="kpibar">
+    <span class="kpi-item"><span class="kpi-lbl">KPI1</span> &#9992; <span id="kpi-airgap" class="kpi-warn">checking</span></span>
+    <span class="kpi-sep">|</span>
+    <span class="kpi-item"><span class="kpi-lbl">KPI2</span> ttft <span id="kpi-ttft" class="kpi-val">—</span></span>
+    <span class="kpi-sep">|</span>
+    <span class="kpi-item"><span class="kpi-lbl">KPI3</span> rag-doc <button id="kpi-rag-btn">off</button></span>
+    <span class="kpi-sep">|</span>
+    <span class="kpi-item"><span class="kpi-lbl">KPI4</span> &#128267; <span id="kpi-battery" class="kpi-val">—</span> &nbsp;&#8635; <span id="kpi-queries" class="kpi-val">0/20</span></span>
+  </div>
   <div id="inputbar">
     <span id="pp">&#10095;</span>
     <input id="prompt" type="text" placeholder="initializing SlyOS SDK..." disabled autocomplete="off" autofocus spellcheck="false">
@@ -251,6 +282,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 // entirely on-device via Transformers.js
 // ============================================================
 import SlyOS from './slyos-sdk-patched.js';
+import { retrieve, buildContext, MANUAL_META, MANUAL_CHUNKS } from './rag-manual.js';
 
 // ── CONFIG ──
 const API_KEY = 'sk_live_195dab899a2c27badf00e560bee550727081cc8ebd1f329c';
@@ -284,6 +316,8 @@ const STATE = {
   totalTokens: 0,
   deviceProfile: null,
 };
+let ragMode = false;
+let queryCount = 0;
 
 // ── DOM ──
 const $out = () => document.getElementById('output');
@@ -508,6 +542,7 @@ async function initSDK() {
     setInputEnabled(true);
     updateStats({ model: SELECTED_MODEL, ctx: modelCtx || ctx });
     $statsbar.classList.add('show');
+    initKPI();
 
     addSys(
       '<span class="ok">' + mOpt.label + ' loaded and ready.</span><br>' +
@@ -536,6 +571,75 @@ async function initSDK() {
   }
 }
 
+// ── KPI DASHBOARD INIT ──
+function initKPI() {
+  // KPI 1 — Air-Gap Detection
+  function updateAirGap() {
+    const el = document.getElementById('kpi-airgap');
+    if (!el) return;
+    if (!navigator.onLine) {
+      el.textContent = '✓ air-gapped';
+      el.className = 'kpi-pass';
+    } else {
+      el.textContent = 'online (go offline to test)';
+      el.className = 'kpi-val';
+    }
+  }
+  updateAirGap();
+  window.addEventListener('online', updateAirGap);
+  window.addEventListener('offline', updateAirGap);
+
+  // KPI 4 — Battery Monitoring
+  if ('getBattery' in navigator) {
+    navigator.getBattery().then(bat => {
+      function updateBat() {
+        const el = document.getElementById('kpi-battery');
+        if (!el) return;
+        const pct = Math.round(bat.level * 100);
+        const ch = bat.charging ? '⚡' : '';
+        el.textContent = ch + pct + '%';
+        el.className = pct > 30 ? 'kpi-pass' : pct > 15 ? 'kpi-warn' : 'kpi-fail';
+      }
+      updateBat();
+      bat.addEventListener('levelchange', updateBat);
+      bat.addEventListener('chargingchange', updateBat);
+    }).catch(() => {
+      const el = document.getElementById('kpi-battery');
+      if (el) { el.textContent = 'n/a'; el.className = 'kpi-val'; }
+    });
+  } else {
+    const el = document.getElementById('kpi-battery');
+    if (el) { el.textContent = 'n/a'; el.className = 'kpi-val'; }
+  }
+
+  // KPI 3 — RAG Toggle
+  const ragBtn = document.getElementById('kpi-rag-btn');
+  if (ragBtn) {
+    ragBtn.addEventListener('click', () => {
+      ragMode = !ragMode;
+      ragBtn.textContent = ragMode ? 'on' : 'off';
+      ragBtn.classList.toggle('on', ragMode);
+      if (ragMode) {
+        addSys(
+          '<span class="ok">RAG mode ON</span> <span class="dm">— answers grounded in <em>' +
+          MANUAL_META.title + '</em> (' + MANUAL_CHUNKS.length + ' chunks, ' + MANUAL_META.pages + ' pages)</span>'
+        );
+        setSug([
+          'What is the PSV set pressure requirement?',
+          'ESP motor temperature limit?',
+          'H2S concentration limit in confined spaces?',
+          'BOP pressure test frequency?',
+        ]);
+      } else {
+        addSys('<span class="dm">RAG mode OFF — general conversation mode</span>');
+        setSug(['What can you do?', 'Tell me a joke', 'Write a haiku about AI', 'Explain edge computing']);
+      }
+    });
+  }
+
+  document.getElementById('kpibar').classList.add('show');
+}
+
 // ── CHAT (uses sdk.generateStream) ──
 async function sendMessage(text) {
   if (!STATE.ready || STATE.generating || !text.trim()) return;
@@ -549,12 +653,33 @@ async function sendMessage(text) {
   setStatus('generating...', 'var(--accent)');
   setSug([]);
 
+  // KPI 4 — Query counter
+  queryCount++;
+  const qEl = document.getElementById('kpi-queries');
+  if (qEl) {
+    qEl.textContent = queryCount + '/20';
+    qEl.className = queryCount >= 20 ? 'kpi-pass' : 'kpi-val';
+  }
+
+  // KPI 3 — RAG context injection
+  let ragResults = [];
+  let systemContent = MODEL_OPTIONS[SELECTED_MODEL].sysPrompt;
+  if (ragMode) {
+    ragResults = retrieve(input, 3);
+    if (ragResults.length > 0) {
+      systemContent = buildContext(ragResults) + '\n\n' + systemContent;
+    }
+  }
+
   // Add to conversation history
   STATE.messages.push({ role: 'user', content: input });
 
   // Keep context tight: system + last 4 messages (2 exchanges) to prevent hang
+  const sysMsg = ragMode
+    ? { role: 'system', content: systemContent }
+    : STATE.messages[0];
   const contextMessages = [
-    STATE.messages[0], // system prompt
+    sysMsg,
     ...STATE.messages.slice(1).slice(-4) // last 4 user/assistant messages
   ];
 
@@ -624,11 +749,32 @@ async function sendMessage(text) {
       speed: tokensGenerated > 0 ? (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s' : '—',
     });
 
+    // KPI 2 — TTFT badge
     if (firstTokenTime) {
-      addSys('<span class="dm">' + tokensGenerated + ' tokens in ' + (totalMs / 1000).toFixed(1) + 's | first token: ' + Math.round(firstTokenTime) + 'ms | ' + (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s</span>');
+      const ttftMs = Math.round(firstTokenTime);
+      const ttftPass = ttftMs < 3000;
+      const ttftEl = document.getElementById('kpi-ttft');
+      if (ttftEl) {
+        ttftEl.textContent = ttftMs + 'ms';
+        ttftEl.className = ttftPass ? 'kpi-pass' : 'kpi-fail';
+      }
+      const ttftTag = ttftPass
+        ? '<span class="ok">TTFT ' + ttftMs + 'ms ✓</span>'
+        : '<span class="warn">TTFT ' + ttftMs + 'ms ✗ (target &lt;3000ms)</span>';
+      addSys('<span class="dm">' + tokensGenerated + ' tokens · ' + (totalMs / 1000).toFixed(1) + 's · ' + ttftTag + ' · ' + (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s</span>');
     }
 
-    setSug(['Tell me more', 'Explain that simpler', 'What else can you do?', 'Write code for that']);
+    // KPI 3 — RAG citations
+    if (ragMode && ragResults.length > 0) {
+      const citations = ragResults.map(r => '<span style="color:var(--cyan)">p.' + r.page + '</span> ' + r.section).join('  ·  ');
+      addSys('<span class="dm">&#128196; Sources: ' + citations + '</span>');
+    }
+
+    if (ragMode) {
+      setSug(['PSV set pressure requirement?', 'ESP motor temperature limit?', 'H2S in confined spaces?', 'BOP test frequency?']);
+    } else {
+      setSug(['Tell me more', 'Explain that simpler', 'What else can you do?', 'Write code for that']);
+    }
 
   } catch (err) {
     console.error('Generation error:', err);
