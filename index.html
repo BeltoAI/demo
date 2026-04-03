@@ -8,6 +8,11 @@
 <meta name="keywords" content="Edge AI, On-Device LLM, SLM, Belto, SlyOS, Local Inference, WebGPU, Demo, quantum-1.7b">
 <meta name="author" content="Belto Inc.">
 <meta name="theme-color" content="#FF4D00">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="SlyOS">
+<link rel="manifest" href="/manifest.json">
 <meta property="og:type" content="website">
 <meta property="og:title" content="SlyOS Demo — AI Running on YOUR Device">
 <meta property="og:description" content="Chat with a 1.7B parameter AI that runs entirely in your browser via the SlyOS SDK. No server, no cloud.">
@@ -658,6 +663,25 @@ $sbtn.addEventListener('click', () => sendMessage($prompt.value));
 
 // ── INIT ──
 runBoot();
+
+// ── SERVICE WORKER REGISTRATION ──────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('[SlyOS] Service worker registered. Offline mode active.');
+        reg.addEventListener('updatefound', () => {
+          const nw = reg.installing;
+          nw.addEventListener('statechange', () => {
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              console.log('[SlyOS] New version cached — refresh to update.');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[SlyOS] SW registration failed:', err));
+  });
+}
 </script>
 </body>
 </html>
