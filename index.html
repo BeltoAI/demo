@@ -187,13 +187,15 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 .kpi-fail{color:var(--red);font-weight:700}
 .kpi-warn{color:var(--yellow);font-weight:700}
 .kpi-val{color:#fff;font-weight:600}
-#kpi-rag-btn{
+#kpi-rag-medical, #kpi-rag-drilling{
   background:#111;border:1px solid var(--border);color:var(--dim);
-  font-family:inherit;font-size:9px;padding:1px 7px;border-radius:3px;
-  cursor:pointer;transition:all .15s;
+  font-family:inherit;font-size:9px;padding:1px 8px;border-radius:3px;
+  cursor:pointer;transition:all .15s;margin-left:3px;
 }
-#kpi-rag-btn.on{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.08)}
-#kpi-rag-btn:hover{border-color:var(--accent);color:var(--accent)}
+#kpi-rag-medical:hover{border-color:var(--green);color:var(--green)}
+#kpi-rag-medical.on{border-color:var(--green);color:var(--green);background:rgba(74,222,128,.10);font-weight:700}
+#kpi-rag-drilling:hover{border-color:var(--yellow);color:var(--yellow)}
+#kpi-rag-drilling.on{border-color:var(--yellow);color:var(--yellow);background:rgba(250,204,21,.10);font-weight:700}
 .kpi-sep{color:#222}
 
 /* ── RESPONSIVE ── */
@@ -257,7 +259,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
     <span class="kpi-sep">|</span>
     <span class="kpi-item"><span class="kpi-lbl">KPI2</span> ttft <span id="kpi-ttft" class="kpi-val">—</span></span>
     <span class="kpi-sep">|</span>
-    <span class="kpi-item"><span class="kpi-lbl">KPI3</span> rag-doc <button id="kpi-rag-btn">off</button></span>
+    <span class="kpi-item"><span class="kpi-lbl">KPI3</span> &#128203; <button id="kpi-rag-medical">&#10010; Healthcare RAG</button> <button id="kpi-rag-drilling">&#9881; Oil Rig RAG</button></span>
     <span class="kpi-sep">|</span>
     <span class="kpi-item"><span class="kpi-lbl">KPI4</span> &#128267; <span id="kpi-battery" class="kpi-val">—</span> &nbsp;&#8635; <span id="kpi-queries" class="kpi-val">0/20</span></span>
   </div>
@@ -291,6 +293,7 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 // ============================================================
 import SlyOS from './slyos-sdk-patched.js';
 import { retrieve, buildContext, formatSourcesHTML, MANUAL_META, MANUAL_CHUNKS } from './rag-manual.js';
+import { retrieveDrilling, buildDrillingContext, formatDrillingSourcesHTML, DRILLING_META, DRILLING_CHUNKS } from './rag-drilling.js';
 
 // ── CONFIG ──
 const API_KEY = 'sk_live_195dab899a2c27badf00e560bee550727081cc8ebd1f329c';
@@ -324,7 +327,7 @@ const STATE = {
   totalTokens: 0,
   deviceProfile: null,
 };
-let ragMode = false;
+let ragMode = false;       // 'medical' | 'drilling' | false
 let queryCount = 0;
 let stopRequested = false;
 
@@ -747,32 +750,36 @@ function initKPI() {
     if (el) { el.textContent = 'n/a'; el.className = 'kpi-val'; }
   }
 
-  // KPI 3 — RAG Toggle
-  const ragBtn = document.getElementById('kpi-rag-btn');
-  if (ragBtn) {
-    ragBtn.addEventListener('click', () => {
-      ragMode = !ragMode;
-      ragBtn.textContent = ragMode ? 'on' : 'off';
-      ragBtn.classList.toggle('on', ragMode);
-      if (ragMode) {
-        addSys(
-          '<span class="ok">RAG mode ON</span> <span class="dm">— answers grounded in <em>' +
-          MANUAL_META.title + '</em></span><br>' +
-          '<span class="dm" style="font-size:8px">&#128218; ' + MANUAL_CHUNKS.length + ' clinical chunks · ' +
-          MANUAL_META.pages + ' pages · Sources: AHA, ESC, NICE, NEJM, Lancet, WHO &amp; more</span>'
-        );
-        setSug([
-          'Heart attack symptoms and treatment?',
-          'How is type 2 diabetes diagnosed?',
-          'Sepsis-6 bundle steps?',
-          'What are COPD GOLD stages?',
-        ]);
-      } else {
-        addSys('<span class="dm">RAG mode OFF — general conversation mode</span>');
-        setSug(['What can you do?', 'Tell me a joke', 'Write a haiku about AI', 'Explain edge computing']);
-      }
-    });
+  // KPI 3 — Dual RAG Toggles
+  function setRAGMode(mode) {
+    ragMode = mode;
+    const mBtn = document.getElementById('kpi-rag-medical');
+    const dBtn = document.getElementById('kpi-rag-drilling');
+    if (mBtn) mBtn.classList.toggle('on', mode === 'medical');
+    if (dBtn) dBtn.classList.toggle('on', mode === 'drilling');
+
+    if (mode === 'medical') {
+      addSys(
+        '<span class="ok">&#10010; Healthcare RAG ON</span> <span class="dm">— ' + MANUAL_META.title + '</span><br>' +
+        '<span class="dm" style="font-size:8px">&#128218; ' + MANUAL_CHUNKS.length + ' clinical chunks · Sources: AHA, ESC, NICE, NEJM, Lancet, WHO &amp; more</span>'
+      );
+      setSug(['Heart attack diagnosis?', 'Type 2 diabetes treatment?', 'Sepsis-6 bundle?', 'COPD staging?']);
+    } else if (mode === 'drilling') {
+      addSys(
+        '<span style="color:var(--yellow)">&#9881; Oil Rig RAG ON</span> <span class="dm">— ' + DRILLING_META.title + '</span><br>' +
+        '<span class="dm" style="font-size:8px">&#128218; ' + DRILLING_CHUNKS.length + ' drilling chunks · Sources: NOV e-Wildcat, WellData/RT, DRILCO, API RP 13B-1</span>'
+      );
+      setSug(['How does e-Wildcat Auto Drill work?', 'BHA packed hole stabiliser rules?', 'Differential pressure sticking causes?', 'API 13B-1 mud weight procedure?']);
+    } else {
+      addSys('<span class="dm">RAG mode OFF — general conversation mode</span>');
+      setSug(['What is SlyOS?', 'Tell me a joke', 'Write a haiku about AI', 'Explain edge computing']);
+    }
   }
+
+  const medBtn = document.getElementById('kpi-rag-medical');
+  const drlBtn = document.getElementById('kpi-rag-drilling');
+  if (medBtn) medBtn.addEventListener('click', () => setRAGMode(ragMode === 'medical' ? false : 'medical'));
+  if (drlBtn) drlBtn.addEventListener('click', () => setRAGMode(ragMode === 'drilling' ? false : 'drilling'));
 
   document.getElementById('kpibar').classList.add('show');
 }
@@ -801,15 +808,21 @@ async function sendMessage(text) {
   // KPI 3 — RAG context injection (truncate chunks to avoid context overflow)
   let ragResults = [];
   let systemContent = MODEL_OPTIONS[SELECTED_MODEL].sysPrompt;
-  if (ragMode) {
-    ragResults = retrieve(input, 2); // max 2 chunks
+  if (ragMode === 'medical') {
+    ragResults = retrieve(input, 2);
     if (ragResults.length > 0) {
-      // Truncate each chunk to 300 chars — prevents overflowing the model context window
       const truncated = ragResults.map(r => ({
-        ...r,
-        chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
+        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
       }));
       systemContent = buildContext(truncated);
+    }
+  } else if (ragMode === 'drilling') {
+    ragResults = retrieveDrilling(input, 2);
+    if (ragResults.length > 0) {
+      const truncated = ragResults.map(r => ({
+        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
+      }));
+      systemContent = buildDrillingContext(truncated);
     }
   }
 
@@ -921,22 +934,27 @@ async function sendMessage(text) {
       addSys('<span class="dm">' + tokensGenerated + ' tokens · ' + (totalMs / 1000).toFixed(1) + 's · ' + ttftTag + ' · ' + (tokensGenerated / (totalMs / 1000)).toFixed(1) + ' t/s</span>');
     }
 
-    // KPI 3 — RAG citations + journal sources
+    // KPI 3 — RAG citations + sources
     if (ragMode && ragResults.length > 0) {
+      const isMed = ragMode === 'medical';
+      const citColor = isMed ? 'var(--cyan)' : 'var(--yellow)';
       const chunks = ragResults.map(r =>
-        '<span style="color:var(--cyan)">p.' + r.page + '</span>&nbsp;<span class="dm">' + r.section + '</span>'
+        '<span style="color:' + citColor + '">p.' + r.page + '</span>&nbsp;<span class="dm">' + r.section + '</span>'
       ).join('&emsp;·&emsp;');
-      const srcLinks = formatSourcesHTML(ragResults);
+      const srcLinks = isMed ? formatSourcesHTML(ragResults) : formatDrillingSourcesHTML(ragResults);
+      const icon = isMed ? '&#128196;' : '&#9881;';
       addSys(
-        '<span class="dm">&#128196; Referenced: ' + chunks + '</span>' +
+        '<span class="dm">' + icon + ' Referenced: ' + chunks + '</span>' +
         (srcLinks.length
           ? '<br><span class="dm" style="font-size:8px">&#128279; ' + srcLinks.join(' &middot; ') + '</span>'
           : '')
       );
     }
 
-    if (ragMode) {
-      setSug(['Heart attack diagnosis and treatment?', 'COPD management and staging?', 'Sepsis Sepsis-6 bundle?', 'Stroke thrombolysis criteria?']);
+    if (ragMode === 'medical') {
+      setSug(['Heart attack diagnosis?', 'COPD staging?', 'Sepsis bundle?', 'Stroke treatment?']);
+    } else if (ragMode === 'drilling') {
+      setSug(['e-Wildcat Auto Drill mode?', 'BHA stabiliser placement?', 'Stuck pipe prevention?', 'Mud weight measurement?']);
     } else {
       setSug(['Tell me more', 'Explain that simpler', 'What else can you do?', 'Write code for that']);
     }
