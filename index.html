@@ -975,7 +975,7 @@ async function sendMessage(text) {
     const result = await Promise.race([
       STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
         temperature: 0.4,
-        maxTokens: 350, // enough for a full paragraph answer
+        maxTokens: 1000, // allow detailed multi-paragraph answers
         onToken: (token, partial) => {
           if (stopReached || stopRequested) return;
           if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
