@@ -919,15 +919,15 @@ async function sendMessage(text) {
   let ragResults = [];
   let systemContent = MODEL_OPTIONS[SELECTED_MODEL].sysPrompt;
   if (ragMode === 'medical') {
-    ragResults = retrieve(input, 2);
+    ragResults = retrieve(input, 3);
     if (ragResults.length > 0) {
       const truncated = ragResults.map(r => ({
-        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 500) + (r.chunk.text.length > 500 ? '…' : '') }
+        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 600) + (r.chunk.text.length > 600 ? '…' : '') }
       }));
       systemContent = buildContext(truncated);
     }
   } else if (ragMode === 'drilling') {
-    ragResults = retrieveDrilling(input, 2);
+    ragResults = retrieveDrilling(input, 3);
     if (ragResults.length > 0) {
       const truncated = ragResults.map(r => ({
         ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 500) + (r.chunk.text.length > 500 ? '…' : '') }

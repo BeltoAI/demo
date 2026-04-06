@@ -292,20 +292,58 @@ const STOP_WORDS = new Set([
   'a','an','the','and','or','but','in','on','at','to','for','of','with',
   'by','from','is','are','was','were','be','been','being','have','has',
   'had','do','does','did','will','would','could','should','may','might',
-  'this','that','these','those','i','you','he','she','it','we','they',
+  'this','that','these','those','you','he','she','we','they',
   'what','which','who','how','when','where','why','can','not','no','if',
-  'as','so','than','then','its','their','there','also','must','per',
+  'as','so','than','then','its','their','there','also','per',
   'after','before','each','more','any','all','use','used','using','within',
   'during','without','between','above','below','through','into','over',
   'under','around','about','against','following',
 ]);
+
+// Drilling synonym/alias expansion
+const DRILLING_SYNONYMS = {
+  'auto drill':         ['autodrill','wob','rop','drawworks','brake','payoff','ewildcat'],
+  'e-wildcat':          ['ewildcat','autodrill','auto drill','nov','rigse','drawworks'],
+  'wildcat':            ['ewildcat','auto drill','nov','rigse','rop','wob'],
+  'wob':                ['weight on bit','auto drill','ewildcat','payoff'],
+  'rop':                ['rate of penetration','auto drill','ewildcat','wob'],
+  'time drill':         ['timedrill','increment','wc incr','wc time','casing milling'],
+  'bha':                ['bottom hole assembly','drill collar','stabiliser','hwdp','drilling assembly'],
+  'stabiliser':         ['bha','stabilizer','packed hole','formation','gauge'],
+  'stabilizer':         ['bha','stabiliser','packed hole','formation','gauge'],
+  'stuck pipe':         ['differential','sticking','jar','freeing','over pull'],
+  'differential pressure': ['diff press','delta p','filter cake','sticking','stuck pipe'],
+  'mud weight':         ['mud balance','ppg','mud density','api 13b','drilling fluid'],
+  'mud':                ['drilling fluid','mud weight','pv','yp','viscosity','filtration'],
+  'viscosity':          ['pv','plastic viscosity','yield point','yp','fann','rheology'],
+  'pv':                 ['plastic viscosity','fann','rheology','yp','yield point'],
+  'filtration':         ['filter press','fluid loss','filter cake','api filtration','spurt'],
+  'ecd':                ['equivalent circulating density','hydraulics','pore pressure','fracture'],
+  'well control':       ['kick','shut in','sidpp','sicp','blowout','bop'],
+  'kick':               ['well control','shut in','sidpp','flow check','blowout'],
+  'torque':             ['torque drag','friction','drill string','wellbore','nc50'],
+  'drill collar':       ['nc50','hwdp','bha','torque','make up'],
+  'hwdp':               ['heavy wall','drill pipe','bha','transition zone','fatigue'],
+  'shock sub':          ['vibration','bit bounce','jar','bha','shock tool'],
+  'api':                ['api 13b','mud testing','api rp','standard','procedure'],
+  'ph':                 ['acidity','alkalinity','lime','caustic','mud chemistry'],
+};
+
+function expandQuery(query) {
+  const lower = query.toLowerCase();
+  const extras = [];
+  for (const [term, syns] of Object.entries(DRILLING_SYNONYMS)) {
+    if (lower.includes(term)) extras.push(...syns);
+  }
+  return extras.length ? query + ' ' + extras.join(' ') : query;
+}
 
 function tokenize(text) {
   return text.toLowerCase()
     .replace(/[^a-z0-9\s\-\/]/g, ' ')
     .replace(/[-\/]/g, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 2 && !STOP_WORDS.has(t));
+    .filter(t => t.length >= 2 && !STOP_WORDS.has(t)); // allow 2-char tokens (WOB, ROP, BHA, pH)
 }
 
 const _idx = DRILLING_CHUNKS.map(c => {
@@ -326,17 +364,18 @@ const _idf = {};
 
 DRILLING_META.chunks = DRILLING_CHUNKS.length;
 
-export function retrieveDrilling(query, topK = 2) {
-  const qTokens = tokenize(query);
+export function retrieveDrilling(query, topK = 3) {
+  const expanded = expandQuery(query);
+  const qTokens = tokenize(expanded);
   if (!qTokens.length) return [];
 
   const queryLower = query.toLowerCase();
-  const querySnippet = queryLower.slice(0, 40);
 
   const scored = DRILLING_CHUNKS.map((chunk, i) => {
     const idx = _idx[i];
     let score = 0;
 
+    // TF-IDF over expanded token set
     for (const t of qTokens) {
       if (idx.tokens.has(t)) {
         const tf = Math.log(1 + (idx.freq[t] || 0));
@@ -344,16 +383,27 @@ export function retrieveDrilling(query, topK = 2) {
       }
     }
 
-    const meta = (chunk.category + ' ' + chunk.section).toLowerCase();
+    // Category / section match boost
+    const meta = (chunk.category + ' ' + chunk.section + ' ' + (chunk.source || '')).toLowerCase();
     for (const t of qTokens) {
-      if (meta.includes(t)) score += 1.5;
+      if (meta.includes(t)) score += 2.5;
     }
 
-    if (chunk.text.toLowerCase().includes(querySnippet)) score += 4;
-
+    // Bigram phrase matching
     for (let j = 0; j < qTokens.length - 1; j++) {
       const bigram = qTokens[j] + ' ' + qTokens[j + 1];
-      if (chunk.text.toLowerCase().includes(bigram)) score += 2;
+      if (chunk.text.toLowerCase().includes(bigram)) score += 3;
+    }
+
+    // Trigram matching
+    for (let j = 0; j < qTokens.length - 2; j++) {
+      const trigram = qTokens[j] + ' ' + qTokens[j+1] + ' ' + qTokens[j+2];
+      if (chunk.text.toLowerCase().includes(trigram)) score += 5;
+    }
+
+    // Original query term direct hit
+    for (const t of tokenize(queryLower)) {
+      if (chunk.text.toLowerCase().includes(t)) score += 0.5;
     }
 
     const sources = DRILLING_SOURCES[chunk.category] || [];
@@ -370,25 +420,15 @@ export function buildDrillingContext(results) {
   if (!results.length) return null;
 
   const excerpts = results.map((r, i) => {
-    const srcLine = (r.sources || []).slice(0, 2)
-      .map(s => `  • ${s.label}`)
-      .join('\n');
-    return (
-      `[${i + 1}] ${r.category} · p.${r.chunk.page} — ${r.chunk.section}\n` +
-      `Source: ${r.chunk.source || 'DRILCO / NOV / API'}\n` +
-      r.chunk.text +
-      (srcLine ? `\n\nReferences:\n${srcLine}` : '')
-    );
+    const src = r.chunk.source || 'NOV / DRILCO / API';
+    return `[REF ${i + 1}] ${r.category} — ${r.chunk.section} (p.${r.chunk.page} | ${src}):\n${r.chunk.text}`;
   });
 
   return (
-    'You are an oil rig and drilling operations assistant. Answer the question using ONLY the following ' +
-    'excerpts from drilling handbooks and technical manuals. Cite the page number, section, and source document. ' +
-    'Do NOT speculate or add information beyond the excerpts. If the answer is not in the excerpts, say so.\n\n' +
-    'DRILLING MANUAL EXCERPTS:\n' +
-    '─────────────────────────────────────────────\n' +
-    excerpts.join('\n\n─────────────────────────────────────────────\n\n') +
-    '\n─────────────────────────────────────────────'
+    'You are a drilling operations engineer with access to technical manuals. ' +
+    'Using the references below, give a thorough, detailed answer. Include specific values, ' +
+    'procedures, settings, and operational steps. Cite the REF number and source document.\n\n' +
+    excerpts.join('\n\n')
   );
 }
 

@@ -396,20 +396,62 @@ const STOP_WORDS = new Set([
   'a','an','the','and','or','but','in','on','at','to','for','of','with',
   'by','from','is','are','was','were','be','been','being','have','has',
   'had','do','does','did','will','would','could','should','may','might',
-  'this','that','these','those','i','you','he','she','it','we','they',
+  'this','that','these','those','you','he','she','we','they',
   'what','which','who','how','when','where','why','can','not','no','if',
-  'as','so','than','then','its','their','there','also','must','per',
-  'after','before','each','more','than','any','all','use','used','using',
+  'as','so','than','then','its','their','there','also','per',
+  'after','before','each','more','any','all','use','used','using',
   'within','during','without','between','above','below','across','through',
   'into','over','under','around','about','against','following',
 ]);
+
+// Medical synonym/alias expansion — expands query to include clinical equivalents
+const MEDICAL_SYNONYMS = {
+  'heart attack':       ['myocardial infarction','mi','ami','stemi','nstemi','pci','troponin'],
+  'heart failure':      ['hf','hfref','hfpef','bnp','ejection fraction','ef','diuretic','furosemide'],
+  'mi':                 ['myocardial infarction','stemi','ami','heart attack','troponin','pci'],
+  'stemi':              ['myocardial infarction','mi','ami','heart attack','pci'],
+  'blood pressure':     ['hypertension','bp','sbp','dbp','mmhg','antihypertensive'],
+  'hypertension':       ['blood pressure','bp','mmhg','ace inhibitor','arb','ccb','thiazide'],
+  'diabetes':           ['t2dm','glucose','hba1c','insulin','metformin','sglt2','glp1','dka'],
+  'diabetic':           ['diabetes','t2dm','glucose','hba1c','insulin'],
+  'stroke':             ['cerebrovascular','tia','alteplase','thrombolysis','ischaemic','lvo'],
+  'copd':               ['chronic obstructive','gold','spirometry','emphysema','fev1','exacerbation'],
+  'asthma':             ['bronchospasm','wheeze','salbutamol','inhaler','peak flow'],
+  'sepsis':             ['septic','sofa','sirs','bacteraemia','infection','antibiotics','lactate'],
+  'depression':         ['phq','ssri','antidepressant','mood','cbt','sertraline','fluoxetine'],
+  'cancer':             ['oncology','tumour','malignancy','chemotherapy','carcinoma','staging'],
+  'kidney':             ['renal','nephrology','creatinine','egfr','aki','ckd','dialysis','kdigo'],
+  'aki':                ['acute kidney injury','creatinine','egfr','renal','kdigo','dialysis'],
+  'epilepsy':           ['seizure','anticonvulsant','eeg','status epilepticus','lorazepam','levetiracetam'],
+  'seizure':            ['epilepsy','status epilepticus','lorazepam','levetiracetam','eeg'],
+  'ecg':                ['electrocardiogram','arrhythmia','qrs','pr interval','qt','atrial fibrillation'],
+  'af':                 ['atrial fibrillation','arrhythmia','anticoagulation','ecg'],
+  'anaphylaxis':        ['adrenaline','epinephrine','epipen','allergy','anaphylactic'],
+  'thyroid':            ['tsh','t4','t3','hypothyroid','hyperthyroid','levothyroxine','carbimazole'],
+  'migraine':           ['headache','triptan','sumatriptan','aura','prophylaxis','topiramate'],
+  'pulmonary embolism': ['pe','dvt','heparin','anticoagulation','vte','ctpa'],
+  'pe':                 ['pulmonary embolism','dvt','anticoagulation','heparin','ctpa'],
+  'pneumonia':          ['infection','antibiotic','curb65','cap','hospital acquired'],
+  'drug interaction':   ['cyp3a4','qt','serotonin','pharmacology','contraindication'],
+  'delirium':           ['cam','confusion','cognitive','geriatric','acute confusional'],
+  'pain':               ['analgesic','opioid','nsaid','paracetamol','neuropathic','who ladder'],
+};
+
+function expandQuery(query) {
+  const lower = query.toLowerCase();
+  const extras = [];
+  for (const [term, syns] of Object.entries(MEDICAL_SYNONYMS)) {
+    if (lower.includes(term)) extras.push(...syns);
+  }
+  return extras.length ? query + ' ' + extras.join(' ') : query;
+}
 
 function tokenize(text) {
   return text.toLowerCase()
     .replace(/[^a-z0-9\s\-]/g, ' ')
     .replace(/-/g, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 2 && !STOP_WORDS.has(t));
+    .filter(t => t.length >= 2 && !STOP_WORDS.has(t)); // allow 2-char tokens (MI, EF, BP, IV, pH)
 }
 
 // Pre-compute token frequency maps and IDF weights
@@ -437,17 +479,17 @@ MANUAL_META.chunks = MANUAL_CHUNKS.length;
  * Returns array of { chunk, score, page, section, category }
  */
 export function retrieve(query, topK = 3) {
-  const qTokens = tokenize(query);
+  const expanded = expandQuery(query);
+  const qTokens = tokenize(expanded);
   if (!qTokens.length) return [];
 
   const queryLower = query.toLowerCase();
-  const querySnippet = queryLower.slice(0, 40);
 
   const scored = MANUAL_CHUNKS.map((chunk, i) => {
     const idx = _idx[i];
     let score = 0;
 
-    // TF-IDF score
+    // TF-IDF score over expanded token set
     for (const t of qTokens) {
       if (idx.tokens.has(t)) {
         const tf = Math.log(1 + (idx.freq[t] || 0));
@@ -456,19 +498,27 @@ export function retrieve(query, topK = 3) {
       }
     }
 
-    // Category/section match boost
+    // Category / section match boost (stronger — exact field matches matter)
     const meta = (chunk.category + ' ' + chunk.section).toLowerCase();
     for (const t of qTokens) {
-      if (meta.includes(t)) score += 1.5;
+      if (meta.includes(t)) score += 2.5;
     }
 
-    // Phrase match boost — reward if a query fragment appears verbatim
-    if (chunk.text.toLowerCase().includes(querySnippet)) score += 4;
-
-    // Multi-word phrase matching (bigrams in query)
+    // Bigram phrase matching in chunk text
     for (let j = 0; j < qTokens.length - 1; j++) {
       const bigram = qTokens[j] + ' ' + qTokens[j + 1];
-      if (chunk.text.toLowerCase().includes(bigram)) score += 2;
+      if (chunk.text.toLowerCase().includes(bigram)) score += 3;
+    }
+
+    // Trigram matching for longer query phrases
+    for (let j = 0; j < qTokens.length - 2; j++) {
+      const trigram = qTokens[j] + ' ' + qTokens[j+1] + ' ' + qTokens[j+2];
+      if (chunk.text.toLowerCase().includes(trigram)) score += 5;
+    }
+
+    // Exact word hit in chunk text for query original tokens
+    for (const t of tokenize(queryLower)) {
+      if (chunk.text.toLowerCase().includes(t)) score += 0.5;
     }
 
     const sources = CATEGORY_SOURCES[chunk.category] || [];
@@ -488,26 +538,15 @@ export function buildContext(results) {
   if (!results.length) return null;
 
   const excerpts = results.map((r, i) => {
-    const srcLine = (r.sources || []).slice(0, 2)
-      .map(s => `  • ${s.label} — ${s.url}`)
-      .join('\n');
-    return (
-      `[${i + 1}] ${r.category} · p.${r.chunk.page} — ${r.chunk.section}\n` +
-      r.chunk.text +
-      (srcLine ? `\n\nKey Sources:\n${srcLine}` : '')
-    );
+    const src = (r.sources || []).slice(0, 1).map(s => s.label).join(', ');
+    return `[REF ${i + 1}] ${r.category} — ${r.chunk.section} (p.${r.chunk.page})${src ? ' | ' + src : ''}:\n${r.chunk.text}`;
   });
 
   return (
-    'You are a medical information assistant. Answer the question using ONLY the following ' +
-    'clinical reference excerpts. Cite the page number and section in your answer. ' +
-    'Mention the source guideline or journal when relevant. ' +
-    'Do NOT speculate or add information beyond what is provided in the excerpts below. ' +
-    'If the answer is not found in the excerpts, say so clearly.\n\n' +
-    'CLINICAL REFERENCE EXCERPTS:\n' +
-    '─────────────────────────────────────────────\n' +
-    excerpts.join('\n\n─────────────────────────────────────────────\n\n') +
-    '\n─────────────────────────────────────────────'
+    'You are a clinical medical assistant with access to evidence-based references. ' +
+    'Using the references below, give a thorough, detailed answer. Include specific values, ' +
+    'criteria, drug names, doses, and treatment steps. Cite the REF number and section.\n\n' +
+    excerpts.join('\n\n')
   );
 }
 
