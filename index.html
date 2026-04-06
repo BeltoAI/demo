@@ -521,9 +521,12 @@ function showGuide() {
   footer.innerHTML = '100% on-device inference · powered by <span style="color:var(--accent)">@beltoinc/slyos-sdk</span> · no data leaves your browser';
   wrap.appendChild(footer);
 
-  const msg = addMsg('');
+  const msg = document.createElement('div');
+  msg.className = 'msg';
+  msg.style.cssText = 'white-space:normal';
   msg.appendChild(wrap);
-  $out().scrollTop = $out().scrollHeight;
+  $out().appendChild(msg);
+  setTimeout(() => { $out().scrollTop = $out().scrollHeight; }, 30);
 }
 
 // ── WELCOME ──
