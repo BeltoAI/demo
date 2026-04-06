@@ -116,6 +116,9 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 .sug:hover{border-color:var(--accent);color:var(--accent);background:#0f0800}
 .sug:disabled{opacity:.3;cursor:not-allowed}
 
+/* RAG panels — hidden until activated */
+#med-panel,#rig-panel{display:none}
+
 /* tile grid */
 .tile-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0}
 .tile{
@@ -305,7 +308,7 @@ const MODEL_OPTIONS = {
     badge: '65MB · ~1 t/s',
     desc: 'LaMini-GPT-124M — ultra-fast, basic quality',
     maxTokens: 120,
-    sysPrompt: 'You are Quantum, a concise AI. Answer briefly and helpfully. No repetition.',
+    sysPrompt: 'You are Quantum, a helpful AI assistant. Answer the question fully and accurately. Use bullet points for lists. Explain key terms when relevant.',
   },
   'quantum-1.7b': {
     id: 'quantum-1.7b',
@@ -313,7 +316,7 @@ const MODEL_OPTIONS = {
     badge: '30MB · ~1.5 t/s',
     desc: 'LaMini-Flan-T5-77M — instruction-tuned T5, better answers',
     maxTokens: 150,
-    sysPrompt: 'You are Quantum, an AI assistant by Belto Inc. SlyOS is an on-device AI SDK by Belto that runs AI models locally in your browser — no cloud, fully private. Answer the user\'s question directly and accurately. For lists, use bullet points. Keep answers under 80 words.',
+    sysPrompt: 'You are Quantum, an AI assistant by Belto Inc. SlyOS is an on-device AI SDK by Belto that runs AI models locally in your browser — no cloud, fully private. Answer the user\'s question directly and accurately. Provide complete explanations with relevant details. Use bullet points for lists.',
   },
 };
 let SELECTED_MODEL = 'quantum-1.7b'; // default — SmolLM2 gives much better quality
@@ -477,15 +480,17 @@ function showWelcome() {
   });
   $out().lastElementChild.appendChild(grid);
 
-  // ── Medical Reference Section ──────────────────────────────────────────────
+  // ── Medical Reference Section (hidden until Healthcare RAG activated) ──────
   const medWrap = document.createElement('div');
-  medWrap.style.cssText = 'margin-top:18px';
+  medWrap.id = 'med-panel';
+  medWrap.style.cssText = 'display:none;margin-top:18px';
 
   const medHeader = document.createElement('div');
-  medHeader.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px';
+  medHeader.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap';
   medHeader.innerHTML =
-    '<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.06em">&#10010; MEDICAL REFERENCE</span>' +
-    '<span style="color:#222;font-size:9px">(enable RAG doc mode for evidence-based answers with citations)</span>';
+    '<span style="color:var(--green);font-size:10px;font-weight:700;letter-spacing:.06em">&#10010; MEDICAL REFERENCE</span>' +
+    '<span style="background:rgba(74,222,128,.08);border:1px solid rgba(74,222,128,.2);color:var(--green);font-size:8px;padding:1px 6px;border-radius:2px">35 clinical chunks</span>' +
+    '<span style="color:var(--dim);font-size:9px">AHA · ESC · NICE · NEJM · WHO · ADA · GOLD</span>';
   medWrap.appendChild(medHeader);
 
   const medTiles = [
@@ -597,6 +602,106 @@ function showWelcome() {
 
   medWrap.appendChild(medGrid);
   $out().lastElementChild.appendChild(medWrap);
+
+  // ── Oil Rig Reference Section (hidden until Oil Rig RAG activated) ─────────
+  const rigWrap = document.createElement('div');
+  rigWrap.id = 'rig-panel';
+  rigWrap.style.cssText = 'display:none;margin-top:18px';
+
+  const rigHeader = document.createElement('div');
+  rigHeader.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap';
+  rigHeader.innerHTML =
+    '<span style="color:var(--yellow);font-size:10px;font-weight:700;letter-spacing:.06em">&#9881; OIL RIG REFERENCE</span>' +
+    '<span style="background:rgba(250,204,21,.08);border:1px solid rgba(250,204,21,.2);color:var(--yellow);font-size:8px;padding:1px 6px;border-radius:2px">30 drilling chunks</span>' +
+    '<span style="color:var(--dim);font-size:9px">NOV e-Wildcat · WellData/RT · DRILCO · API RP 13B-1</span>';
+  rigWrap.appendChild(rigHeader);
+
+  const rigTiles = [
+    {
+      cmd: 'How does the e-Wildcat Auto Drill mode control WOB and ROP?',
+      icon: '&#9881;', bg: 'rgba(250,204,21,.10)', ic: 'var(--yellow)',
+      label: 'Auto Drill Mode', desc: 'WOB · ROP · setpoint control', tag: 'e-Wildcat',
+    },
+    {
+      cmd: 'What is Time Drill mode and when should it be used over Auto Drill?',
+      icon: '&#9201;', bg: 'rgba(96,165,250,.10)', ic: 'var(--blue)',
+      label: 'Time Drill Mode', desc: 'timed WOB ramp · soft formations', tag: 'e-Wildcat',
+    },
+    {
+      cmd: 'What are the BHA stabiliser zone rules for mild, medium and severe formations?',
+      icon: '&#128296;', bg: 'rgba(250,204,21,.10)', ic: 'var(--yellow)',
+      label: 'BHA Stabiliser Zones', desc: 'mild · medium · severe · packed hole', tag: 'BHA Design',
+    },
+    {
+      cmd: 'What causes differential pressure sticking and how is it prevented?',
+      icon: '&#128268;', bg: 'rgba(248,113,113,.10)', ic: '#f87171',
+      label: 'Diff Pressure Sticking', desc: 'filter cake · ECD · mud weight', tag: 'Stuck Pipe',
+    },
+    {
+      cmd: 'What is the maximum make-up torque for an NC50 drill collar connection?',
+      icon: '&#128295;', bg: 'rgba(74,222,128,.10)', ic: 'var(--green)',
+      label: 'Drill Collar Torque', desc: 'NC50 · 29,679 lbf·ft · connections', tag: 'DRILCO',
+    },
+    {
+      cmd: 'What is HWDP and what is its role in the BHA transition zone?',
+      icon: '&#9638;', bg: 'rgba(192,132,252,.10)', ic: 'var(--purple)',
+      label: 'HWDP', desc: 'heavy wall · fatigue · transition zone', tag: 'BHA Design',
+    },
+    {
+      cmd: 'How do you measure mud weight using the API RP 13B-1 procedure?',
+      icon: '&#9879;', bg: 'rgba(96,165,250,.10)', ic: 'var(--blue)',
+      label: 'Mud Weight Test', desc: 'mud balance · ppg · API 13B-1', tag: 'Mud Engineering',
+    },
+    {
+      cmd: 'How is plastic viscosity and yield point measured and what do the values mean?',
+      icon: '&#128028;', bg: 'rgba(250,204,21,.10)', ic: 'var(--yellow)',
+      label: 'PV & Yield Point', desc: 'Fann VG · 600/300 rpm · rheology', tag: 'Mud Engineering',
+    },
+    {
+      cmd: 'What is the API filtration test procedure and what does high filtrate volume indicate?',
+      icon: '&#128374;', bg: 'rgba(34,211,238,.10)', ic: 'var(--cyan)',
+      label: 'Filtration Test', desc: 'filter press · fluid loss · spurt', tag: 'Mud Engineering',
+    },
+    {
+      cmd: 'How do you identify a well control kick and what are the immediate shut-in steps?',
+      icon: '&#128680;', bg: 'rgba(248,113,113,.10)', ic: '#f87171',
+      label: 'Well Control Kick', desc: 'flow check · shut-in · SIDPP', tag: 'Well Control',
+    },
+    {
+      cmd: 'What is ECD and how does it affect the drilling window?',
+      icon: '&#128200;', bg: 'rgba(74,222,128,.10)', ic: 'var(--green)',
+      label: 'ECD Management', desc: 'equivalent circulating density · pore · frac', tag: 'Hydraulics',
+    },
+    {
+      cmd: 'What are shock subs and when should they be run in the BHA?',
+      icon: '&#9889;', bg: 'rgba(192,132,252,.10)', ic: 'var(--purple)',
+      label: 'Shock Subs', desc: 'vibration · bit bounce · BHA protection', tag: 'BHA Design',
+    },
+  ];
+
+  const rigGrid = document.createElement('div');
+  rigGrid.className = 'tile-grid';
+  rigTiles.forEach(t => {
+    const tile = document.createElement('button');
+    tile.className = 'tile';
+    tile.disabled = !STATE.ready;
+    tile.innerHTML =
+      '<div class="tile-icon" style="background:' + t.bg + ';color:' + t.ic + ';font-size:14px">' + t.icon + '</div>' +
+      '<div class="tile-body">' +
+        '<div style="display:flex;align-items:center;gap:5px;margin-bottom:2px">' +
+          '<div class="tile-label" style="font-size:10px">' + t.label + '</div>' +
+          '<span style="background:#111;border:1px solid #1e1e1e;color:#555;font-size:7px;padding:1px 5px;border-radius:2px;flex-shrink:0">' + t.tag + '</span>' +
+        '</div>' +
+        '<div class="tile-desc">' + t.desc + '</div>' +
+      '</div>' +
+      '<span class="tile-arrow">&#8250;</span>';
+    tile.onclick = () => { if (STATE.ready && !STATE.generating) sendMessage(t.cmd); };
+    rigGrid.appendChild(tile);
+  });
+
+  rigWrap.appendChild(rigGrid);
+  $out().lastElementChild.appendChild(rigWrap);
+
   $out().scrollTop = $out().scrollHeight;
 }
 
@@ -758,6 +863,11 @@ function initKPI() {
     if (mBtn) mBtn.classList.toggle('on', mode === 'medical');
     if (dBtn) dBtn.classList.toggle('on', mode === 'drilling');
 
+    const medPanel = document.getElementById('med-panel');
+    const rigPanel = document.getElementById('rig-panel');
+    if (medPanel) medPanel.style.display = mode === 'medical' ? 'block' : 'none';
+    if (rigPanel) rigPanel.style.display = mode === 'drilling' ? 'block' : 'none';
+
     if (mode === 'medical') {
       addSys(
         '<span class="ok">&#10010; Healthcare RAG ON</span> <span class="dm">— ' + MANUAL_META.title + '</span><br>' +
@@ -812,7 +922,7 @@ async function sendMessage(text) {
     ragResults = retrieve(input, 2);
     if (ragResults.length > 0) {
       const truncated = ragResults.map(r => ({
-        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
+        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 500) + (r.chunk.text.length > 500 ? '…' : '') }
       }));
       systemContent = buildContext(truncated);
     }
@@ -820,7 +930,7 @@ async function sendMessage(text) {
     ragResults = retrieveDrilling(input, 2);
     if (ragResults.length > 0) {
       const truncated = ragResults.map(r => ({
-        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 300) + (r.chunk.text.length > 300 ? '…' : '') }
+        ...r, chunk: { ...r.chunk, text: r.chunk.text.slice(0, 500) + (r.chunk.text.length > 500 ? '…' : '') }
       }));
       systemContent = buildDrillingContext(truncated);
     }
@@ -865,7 +975,7 @@ async function sendMessage(text) {
     const result = await Promise.race([
       STATE.sdk.generateStream(SELECTED_MODEL, contextMessages, {
         temperature: 0.4,
-        maxTokens: 100, // hard cap — prevents runaway generation
+        maxTokens: 350, // enough for a full paragraph answer
         onToken: (token, partial) => {
           if (stopReached || stopRequested) return;
           if (!firstTokenTime) firstTokenTime = performance.now() - startTime;
