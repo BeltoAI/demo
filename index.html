@@ -201,6 +201,37 @@ body{background:var(--bg);color:var(--fg);font-family:'IBM Plex Mono',monospace;
 #kpi-rag-drilling.on{border-color:var(--yellow);color:var(--yellow);background:rgba(250,204,21,.10);font-weight:700}
 .kpi-sep{color:#222}
 
+/* ── GUIDE ── */
+#guide-btn{
+  display:inline-flex;align-items:center;gap:6px;margin-top:12px;
+  background:#0a0a0a;border:1px solid var(--border);color:var(--dim);
+  font-family:inherit;font-size:10px;padding:6px 14px;border-radius:4px;
+  cursor:pointer;transition:all .2s;letter-spacing:.03em;
+}
+#guide-btn:hover{border-color:var(--accent);color:var(--accent);background:rgba(255,77,0,.04)}
+#guide-btn .guide-icon{font-size:12px}
+.guide-wrap{margin:6px 0}
+.guide-step{
+  display:flex;gap:12px;align-items:flex-start;
+  padding:10px 12px;margin-bottom:6px;
+  background:#0a0a0a;border:1px solid var(--border);border-radius:5px;
+  transition:border-color .2s;
+}
+.guide-step:hover{border-color:#333}
+.guide-num{
+  flex-shrink:0;width:22px;height:22px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:9px;font-weight:700;margin-top:1px;
+}
+.guide-body{flex:1;min-width:0}
+.guide-title{color:#fff;font-weight:600;font-size:11px;margin-bottom:3px}
+.guide-desc{color:var(--dim);font-size:10px;line-height:1.6}
+.guide-desc .hi{color:var(--fg);font-weight:600}
+.guide-desc .tag{
+  display:inline-block;background:#111;border:1px solid #222;
+  color:var(--dim);font-size:8px;padding:1px 5px;border-radius:2px;margin:0 2px;
+}
+
 /* ── RESPONSIVE ── */
 @media(min-width:600px){
   .tile-grid{grid-template-columns:1fr 1fr 1fr}
@@ -423,6 +454,78 @@ function runBoot() {
   }, 3000);
 }
 
+// ── STEP-BY-STEP GUIDE ──
+function showGuide() {
+  const steps = [
+    {
+      num: '1', color: 'var(--accent)', bg: 'rgba(255,77,0,.15)',
+      title: 'Choose a Model',
+      desc: 'Select <span class="hi">Quantum Nano</span> (65MB · fast) for quick answers, or <span class="hi">Quantum 1.7B</span> (30MB · better quality) for richer responses. You must choose <em>before</em> the model starts loading.'
+    },
+    {
+      num: '2', color: 'var(--green)', bg: 'rgba(74,222,128,.15)',
+      title: 'Wait for "Ready"',
+      desc: 'The model downloads and runs <span class="hi">entirely on your device</span> — no cloud, no API key. Watch the status bar turn green: <span class="tag">Quantum 1.7B loaded and ready.</span> This may take 10–30 seconds on first load (cached after that).'
+    },
+    {
+      num: '3', color: 'var(--blue)', bg: 'rgba(96,165,250,.15)',
+      title: 'Start Chatting',
+      desc: 'Type your question in the <span class="hi">input bar</span> at the bottom and press <span class="tag">Enter</span> or click <span class="tag">Send</span>. Use the <span class="hi">quick-start tiles</span> above to try pre-set questions instantly. Suggestions appear below the output area.'
+    },
+    {
+      num: '4', color: 'var(--green)', bg: 'rgba(74,222,128,.15)',
+      title: 'Enable Healthcare RAG',
+      desc: 'Click <span class="hi">✚ Healthcare RAG</span> in the KPI bar to activate evidence-based medical mode. The AI will answer using <span class="tag">35 clinical chunks</span> from AHA, NICE, NEJM, WHO, ADA, and ESC guidelines. Medical question tiles will appear — click any to try it.'
+    },
+    {
+      num: '5', color: 'var(--yellow)', bg: 'rgba(250,204,21,.15)',
+      title: 'Enable Oil Rig RAG',
+      desc: 'Click <span class="hi">⚙ Oil Rig RAG</span> in the KPI bar for drilling operations mode. The AI answers from <span class="tag">30 drilling chunks</span> sourced from NOV e-Wildcat 2.0, WellData/RT, DRILCO Handbook, and API RP 13B-1. Oil rig question tiles appear for one-click queries.'
+    },
+    {
+      num: '6', color: 'var(--purple)', bg: 'rgba(192,132,252,.15)',
+      title: 'Read the KPI Bar',
+      desc: '<span class="hi">KPI1</span> — air-gap status (online/offline). <span class="hi">KPI2</span> — TTFT (time to first token, measures model speed). <span class="hi">KPI3</span> — RAG toggle buttons. <span class="hi">KPI4</span> — battery level & query counter (resets each session). Click <span class="tag">⚙ Oil Rig RAG</span> or <span class="tag">✚ Healthcare RAG</span> to toggle modes on/off.'
+    },
+    {
+      num: '7', color: '#f87171', bg: 'rgba(248,113,113,.15)',
+      title: 'Stop or Reset',
+      desc: 'If a response is taking too long, click the pulsing <span class="hi" style="color:#f87171">■ stop</span> button to cancel generation immediately. To start a new topic, simply ask a new question — the last 2 conversation turns are kept for context. Refresh the page to reset everything.'
+    },
+  ];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'guide-wrap';
+
+  const header = document.createElement('div');
+  header.style.cssText = 'margin-bottom:10px;display:flex;align-items:center;gap:8px';
+  header.innerHTML =
+    '<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.06em">&#9432; HOW TO USE SLYOS</span>' +
+    '<span style="color:var(--dim);font-size:9px">— on-device AI · no cloud · 100% private</span>';
+  wrap.appendChild(header);
+
+  steps.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'guide-step';
+    row.innerHTML =
+      '<div class="guide-num" style="background:' + s.bg + ';color:' + s.color + '">' + s.num + '</div>' +
+      '<div class="guide-body">' +
+        '<div class="guide-title">' + s.title + '</div>' +
+        '<div class="guide-desc">' + s.desc + '</div>' +
+      '</div>';
+    wrap.appendChild(row);
+  });
+
+  const footer = document.createElement('div');
+  footer.style.cssText = 'margin-top:8px;font-size:9px;color:#333;text-align:center';
+  footer.innerHTML = '100% on-device inference · powered by <span style="color:var(--accent)">@beltoinc/slyos-sdk</span> · no data leaves your browser';
+  wrap.appendChild(footer);
+
+  const msg = addMsg('');
+  msg.appendChild(wrap);
+  $out().scrollTop = $out().scrollHeight;
+}
+
 // ── WELCOME ──
 function showWelcome() {
   addMsg(
@@ -479,6 +582,13 @@ function showWelcome() {
     grid.appendChild(tile);
   });
   $out().lastElementChild.appendChild(grid);
+
+  // ── Step-by-Step Guide button ─────────────────────────────────────────────
+  const guideBtn = document.createElement('button');
+  guideBtn.id = 'guide-btn';
+  guideBtn.innerHTML = '<span class="guide-icon">&#9432;</span> Step-by-Step Guide';
+  guideBtn.onclick = showGuide;
+  $out().lastElementChild.appendChild(guideBtn);
 
   // ── Medical Reference Section (hidden until Healthcare RAG activated) ──────
   const medWrap = document.createElement('div');
